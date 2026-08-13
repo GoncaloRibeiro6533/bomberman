@@ -1,0 +1,1 @@
+- [Game Rules](https://bomberman.fandom.com/wiki/Battle_Game)
