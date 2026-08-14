@@ -144,9 +144,9 @@ object App extends IOApp.Simple {
 
   override def run: IO[Unit] =
     for {
-      clock    <- IO(Clock[IO])
-      gameLoop <- IO.pure(GameLoop(clock))
       queue    <- Queue.unbounded[IO, Command]
+      clock = Clock[IO]
+      gameLoop = GameLoop(clock)
       maze                  = Maze(map)
       player: JoiningPlayer = JoiningPlayer(PlayerId(123).get, Username("Bob1").get)
       players               = maze.insertPlayers(List(player))
