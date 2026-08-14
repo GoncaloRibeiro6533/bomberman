@@ -1,7 +1,7 @@
-import com.evolution.domain.cell.CellType.PlayerPosition
-import com.evolution.domain.game.Maze
-import com.evolution.domain.player.Player.JoiningPlayer
-import com.evolution.domain.player.{PlayerId, Username}
+import com.evolution.cell.CellType.PlayerPosition
+import com.evolution.game.Maze
+import com.evolution.player.Player.*
+import com.evolution.player.*
 import org.scalatest.OptionValues
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers.be
@@ -50,26 +50,26 @@ class MazeTests extends AnyFreeSpec with OptionValues {
       assert(maze.cells.count(_.cellType == PlayerPosition) == 2)
     }
 
-//    "insert players in map should insert players on available positions" in {
-//      val maze = Maze(map)
-//      val players = List(
-//        JoiningPlayer(PlayerId(1).value, Username("Bob1").value),
-//        JoiningPlayer(PlayerId(2).value, Username("Alice").value)
-//      )
-//      val sut =
-//        maze.insertPlayers(players)
-//      assert(sut.size == players.size)
-//      assert(maze.cells.count(_.cellType == PlayerPosition) == players.size)
-//      assert(
-//        maze.cells
-//          .filter(_.cellType == PlayerPosition)
-//          .map(_.cell)
-//          .exists(cell =>
-//            (cell.col.value.value == 1 && cell.line.value.value == 1)
-//              || (cell.col.value.value == 11 && cell.line.value.value == 4)
-//          )
-//      )
-//    }
+    "insert players in map should insert players on available positions" in {
+      val maze = Maze(map)
+      val players = List(
+        JoiningPlayer(PlayerId(1).value, Username("Bob1").value),
+        JoiningPlayer(PlayerId(2).value, Username("Alice").value)
+      )
+      val sut =
+        maze.insertPlayers(players)
+      assert(sut.size == players.size)
+      assert(maze.cells.count(_.cellType == PlayerPosition) == players.size)
+      assert(
+        maze.cells
+          .filter(_.cellType == PlayerPosition)
+          .map(_.cell)
+          .exists(cell =>
+            (cell.col.value.value == 1 && cell.line.value.value == 1)
+              || (cell.col.value.value == 11 && cell.line.value.value == 4)
+          )
+      )
+    }
 
   }
 

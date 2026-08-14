@@ -9,7 +9,7 @@ lazy val thisBuildSettings: Seq[Setting[_]] = inThisBuild(
       "-deprecation",
       "-feature",
       "-Ymacro-annotations",
-      "-Xsource:3",
+      "-Xsource:3-cross",
     ),
     tpolecatExcludeOptions += ScalacOptions.warnNonUnitStatement,
     run / fork           := true,

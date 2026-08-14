@@ -1,8 +1,8 @@
 import com.evolution.bomb.Bomb
 import com.evolution.cell.{Column, Line}
-import com.evolution.domain.bomb.BombId
-import com.evolution.domain.cell.{Cell, PositiveNumber}
-import com.evolution.domain.player.PlayerId
+import com.evolution.bomb.BombId
+import com.evolution.cell.{Cell, PositiveNumber}
+import com.evolution.player.PlayerId
 import org.scalatest.OptionValues
 import org.scalatest.freespec.AnyFreeSpec
 
