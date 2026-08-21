@@ -1,15 +1,10 @@
 package com.evolution.util
 
-import scala.annotation.tailrec
-import scala.util.Random
+import cats.effect.kernel.Sync
+
+import java.util.UUID
 
 object IdGenerator {
-  private val idGenerator: Random = Random
 
-  @tailrec
-  def generateId(): Long = {
-    val id = idGenerator.nextLong()
-    if (id < 0) generateId()
-    else id
-  }
+  def generateUUID[F[_]: Sync]: F[UUID] = Sync[F].delay(UUID.randomUUID())
 }

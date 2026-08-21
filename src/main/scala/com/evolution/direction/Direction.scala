@@ -1,7 +1,9 @@
 package com.evolution.direction
 
 import com.evolution.cell.*
+import io.circe.generic.JsonCodec
 
+@JsonCodec
 sealed abstract class Direction(val colDiff: Int, val lineDiff: Int)
 
 object Direction {

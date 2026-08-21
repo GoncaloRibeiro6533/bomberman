@@ -7,6 +7,8 @@ import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers.be
 import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
 
+import java.util.UUID
+
 class MazeTests extends AnyFreeSpec with OptionValues {
 
   private val map = List(
@@ -26,23 +28,23 @@ class MazeTests extends AnyFreeSpec with OptionValues {
     "insert players in map should insert all players" in {
       val maze = Maze(map)
       val players = List(
-        JoiningPlayer(PlayerId(1).value, Username("Bob1").value),
-        JoiningPlayer(PlayerId(2).value, Username("Alice").value)
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value, Score.Zero),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value, Score.Zero)
       )
       val sut =
         maze.insertPlayers(players)
       assert(sut.size == players.size)
-      assert(sut.exists(_.id == PlayerId(1).value))
-      assert(sut.exists(_.id == PlayerId(2).value))
+      assert(sut.exists(_.id == PlayerId(UUID.randomUUID())))
+      assert(sut.exists(_.id == PlayerId(UUID.randomUUID())))
       assert(maze.cells.count(_.cellType == PlayerPosition) == players.size)
     }
 
     "insert players in map should insert same number of players as available positions" in {
       val maze = Maze(map)
       val players = List(
-        JoiningPlayer(PlayerId(1).value, Username("Bob1").value),
-        JoiningPlayer(PlayerId(2).value, Username("Alice").value),
-        JoiningPlayer(PlayerId(3).value, Username("John").value)
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value, Score.Zero),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value, Score.Zero),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("John").value, Score.Zero)
       )
       val sut =
         maze.insertPlayers(players)
@@ -53,8 +55,8 @@ class MazeTests extends AnyFreeSpec with OptionValues {
     "insert players in map should insert players on available positions" in {
       val maze = Maze(map)
       val players = List(
-        JoiningPlayer(PlayerId(1).value, Username("Bob1").value),
-        JoiningPlayer(PlayerId(2).value, Username("Alice").value)
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value, Score.Zero),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value, Score.Zero)
       )
       val sut =
         maze.insertPlayers(players)
@@ -65,7 +67,7 @@ class MazeTests extends AnyFreeSpec with OptionValues {
           .filter(_.cellType == PlayerPosition)
           .map(_.cell)
           .exists(cell =>
-            (cell.col.value.value == 1 && cell.line.value.value == 1)
+            (cell.col.value.value == UUID.randomUUID() && cell.line.value.value == UUID.randomUUID())
               || (cell.col.value.value == 11 && cell.line.value.value == 4)
           )
       )

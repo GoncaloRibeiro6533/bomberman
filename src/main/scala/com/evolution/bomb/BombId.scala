@@ -1,7 +1,8 @@
 package com.evolution.bomb
 
-class BombId private (val id: Long) extends AnyVal
+import io.circe.generic.JsonCodec
 
-object BombId {
-  def apply(value: Long): Option[BombId] = if (value < 0) None else Some(new BombId(value))
-}
+import java.util.UUID
+
+@JsonCodec
+case class BombId(id: UUID) extends AnyVal

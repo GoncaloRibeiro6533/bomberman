@@ -86,12 +86,12 @@ object Maze {
 
   def apply(map: List[String]): Maze = {
     val cells: List[Position] = loadMap(map)
-    new Maze(map.map(_.length).max, map.size, cells)
+    Maze(map.map(_.length).max, map.size, cells)
   }
 
   def apply(): Maze = {
     val cells = loadMap(map)
-    new Maze(map.map(_.length).max, map.size, cells)
+    Maze(map.map(_.length).max, map.size, cells)
   }
 
 }

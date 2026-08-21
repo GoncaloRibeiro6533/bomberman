@@ -1,34 +1,44 @@
 package com.evolution.player
 
-import com.evolution.cell.Cell
 import com.evolution.bomb.BombCount
+import com.evolution.cell.Cell
+import io.circe.generic.JsonCodec
 
-class PlayerId private (val value: Long) extends AnyVal
+import java.util.UUID
 
-object PlayerId {
-  def apply(value: Long): Option[PlayerId] = if (value < 0) None else Some(new PlayerId(value))
-}
+@JsonCodec
+case class PlayerId(value: UUID) extends AnyVal
 
+@JsonCodec
 sealed trait Player {
   def id: PlayerId
   def username: Username
+  def score: Score
 }
 
 object Player {
 
-  final case class JoiningPlayer(id: PlayerId, username: Username) {
-    def toActivePlayer(cell: Cell) = ActivePlayer(id = id, username = username, cell = cell)
+  @JsonCodec
+  final case class IdlePlayer(id: PlayerId, username: Username, score: Score) extends Player {
+    def toActivePlayer(cell: Cell)     = ActivePlayer(id = id, username = username, cell = cell, score = score)
+    def toJoiningPlayer: JoiningPlayer = JoiningPlayer(id, username, score)
   }
+
+  @JsonCodec
+  final case class JoiningPlayer(id: PlayerId, username: Username, score: Score) extends Player {
+    def toActivePlayer(cell: Cell) = ActivePlayer(id = id, username = username, cell = cell, score = score)
+  }
+  @JsonCodec
   final case class ActivePlayer(
       id: PlayerId,
       username: Username,
       cell: Cell,
       bombs: BombCount = BombCount.One,
-      score: Score = Score.Zero
+      score: Score
   ) extends Player {
-
     def toDeadPlayer: DeadPlayer = DeadPlayer(id, username, score)
   }
 
+  @JsonCodec
   final case class DeadPlayer(id: PlayerId, username: Username, score: Score) extends Player
 }

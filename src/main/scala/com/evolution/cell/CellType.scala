@@ -1,7 +1,10 @@
 package com.evolution.cell
 
+import io.circe.generic.JsonCodec
+
 /** Represents a type of given [Cell]
   */
+@JsonCodec
 sealed trait CellType
 
 object CellType {

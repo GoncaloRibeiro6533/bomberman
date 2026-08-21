@@ -2,6 +2,7 @@ package com.evolution.bomb
 
 import com.evolution.cell.*
 import com.evolution.player.PlayerId
+import io.circe.generic.JsonCodec
 
 import java.time.{Duration, Instant}
 
@@ -13,6 +14,7 @@ import java.time.{Duration, Instant}
   * @param plantedAt
   *   instant that server created bomb
   */
+@JsonCodec
 final case class Bomb(
     id: BombId,
     cell: Cell,
