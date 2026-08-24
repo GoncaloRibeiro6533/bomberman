@@ -19,15 +19,15 @@ object KeyboardReader {
     case _   => none
   }
 
-  def readInput[F[_]: Monad: Console](playerId: PlayerId): F[Command] = for {
+  def readCommand[F[_]: Monad: Console](playerId: PlayerId): F[Command] = for {
     line <- Console[F].readLine
     cmd <- line.headOption match {
       case Some(value) =>
         parseCommand(value, playerId = playerId) match {
           case Some(value) => Monad[F].pure(value)
-          case None        => readInput[F](playerId)
+          case None        => readCommand[F](playerId)
         }
-      case None => readInput[F](playerId)
+      case None => readCommand[F](playerId)
     }
   } yield cmd
 

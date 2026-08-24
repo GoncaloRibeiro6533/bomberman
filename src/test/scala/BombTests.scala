@@ -11,7 +11,7 @@ class BombTests extends AnyFreeSpec with OptionValues {
 
   "bomb" - {
     "bomb should be expired" in {
-      val uuid = UUID.randomUUID()
+      val uuid           = UUID.randomUUID()
       val bombId         = BombId(uuid)
       val positiveNumber = PositiveNumber(1).value
       val cell           = Cell(Column(positiveNumber), Line(positiveNumber))

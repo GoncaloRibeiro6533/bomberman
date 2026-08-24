@@ -52,7 +52,7 @@ lazy val root = project
       "org.http4s"               %% "http4s-circe"                  % http4sVersion,
       "org.http4s"               %% "http4s-jdk-http-client"        % "0.9.0",
       "org.typelevel"            %% "log4cats-slf4j"                % log4CatsVersion,
-      "ch.qos.logback"            % "logback-classic"               % "1.2.3",
+      "ch.qos.logback"            % "logback-classic"               % "1.5.13",
       "org.typelevel"            %% "cats-effect-testing-scalatest" % "1.5.0"          % Test,
       "io.chrisdavenport"        %% "epimetheus-http4s"             % epimetheusVersion,
       "org.scalatestplus"        %% "scalacheck-1-15"               % scalaTestVersion % Test,

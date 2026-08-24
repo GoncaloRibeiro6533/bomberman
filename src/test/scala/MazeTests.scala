@@ -26,7 +26,7 @@ class MazeTests extends AnyFreeSpec with OptionValues {
     }
 
     "insert players in map should insert all players" in {
-      val maze = Maze(map)
+      val maze        = Maze(map)
       val uuidPlayer1 = UUID.randomUUID()
       val uuidPlayer2 = UUID.randomUUID()
       val players = List(

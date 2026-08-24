@@ -15,7 +15,7 @@ case class GameLoop[F[_]: Async] private (
     clock: Clock[F],
     queue: Queue[F, Command],
     topic: Topic[F, Game],
-    release: GameFinished => F[Unit]
+    onComplete: GameFinished => F[Unit]
 ) {
 
   def loop(game: GameRunning): F[Unit] = for {
@@ -30,22 +30,24 @@ case class GameLoop[F[_]: Async] private (
         Right(game.processBombPlanting(playerId, instant))
     }
     _ <- newGameState match {
-      case Left(value) => for {
-        _ <- topic.publish1(value)
-        _ <- release(value)
-      } yield()
-      case Right(value) => for {
-        _ <- topic.publish1(value)
-        _ <- loop(value)
-      } yield()
+      case Left(value) =>
+        for {
+          _ <- topic.publish1(value)
+          _ <- onComplete(value)
+        } yield ()
+      case Right(value) =>
+        for {
+          _ <- topic.publish1(value)
+          _ <- loop(value)
+        } yield ()
     }
   } yield ()
 
   def tickProducer(command: Command, delay: FiniteDuration = 200.milliseconds): F[Unit] =
     for {
-      _   <- queue.offer(command)
-      _   <- Async[F].sleep(delay)
-      _   <- tickProducer(command, delay)
+      _ <- queue.offer(command)
+      _ <- Async[F].sleep(delay)
+      _ <- tickProducer(command, delay)
     } yield ()
 }
 
@@ -54,12 +56,12 @@ object GameLoop {
   def make[F[_]: Async](
       game: GameRunning,
       clock: Clock[F],
-      release: GameFinished => F[Unit]
+      markAsFinished: GameFinished => F[Unit]
   ): Resource[F, GameLoop[F]] = {
     for {
       queue <- Queue.unbounded[F, Command].toResource
       topic <- Resource.eval(Topic[F, Game])
-      gameLoop = GameLoop(clock, queue, topic, release)
+      gameLoop = GameLoop(clock, queue, topic, markAsFinished)
       _ <- gameLoop.loop(game).background
       _ <- gameLoop.tickProducer(Tick).background
     } yield gameLoop

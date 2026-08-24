@@ -22,7 +22,7 @@ sealed trait Game {
 @JsonCodec
 final case class GameWaiting(id: GameId, players: List[JoiningPlayer], nPlayers: PositiveNumber = PositiveNumber.Two)
     extends Game {
-  def start(players: List[JoiningPlayer], startedAt: Instant): GameRunning = {
+  def start(startedAt: Instant): GameRunning = {
     val maze = Maze()
     GameRunning(
       id = id,
