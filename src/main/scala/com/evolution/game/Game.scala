@@ -111,8 +111,8 @@ final case class GameRunning(
         if (bombsToDetonate.exists(_.plantedBy == player.id)) player.copy(bombs = BombCount.One) else player
       )
     val duration: Duration = Duration.between(startedAt, now)
-    val remainingTime      = duration.minus(Duration.ofMinutes(2))
-    if (activePlayers.isEmpty /*|| remainingTime.compareTo(Duration.ofMinutes(2)) >= 0*/ ) {
+    val remainingTime      = Duration.ofMinutes(2).minus(duration)
+    if (activePlayers.isEmpty || remainingTime.isNegative || remainingTime.isZero ) {
       scala.Left(finish)
     } else {
       val remainingBombs = bombs.filterNot(bombsToDetonate.contains(_))
