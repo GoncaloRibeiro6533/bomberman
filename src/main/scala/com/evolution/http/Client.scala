@@ -17,7 +17,7 @@ import org.http4s.implicits.*
 import org.http4s.jdkhttpclient.JdkWSClient
 import org.http4s.circe.CirceEntityCodec.*
 
-import java.net.http.HttpClient
+import java.net.http.{HttpClient, WebSocketHandshakeException}
 import java.util.UUID
 
 object Client extends IOApp {
@@ -69,7 +69,8 @@ object Client extends IOApp {
   }
 
   private implicit val showGamesList: Show[GamesOut] = Show.show { gamesOut =>
-    gamesOut.games.map(game => game.show).mkString("\n")
+    if(gamesOut.games.nonEmpty) gamesOut.games.map(game => game.show).mkString("\n")
+    else "No games available. Please create a new one."
   }
 
   override def run(args: List[String]): IO[ExitCode] = {
@@ -119,8 +120,8 @@ object Client extends IOApp {
   }
 
   private def joinGame: IO[Unit] = {
-    for {
-      _    <- IO.println("Game identifier:")
+    val res = for {
+      _    <- IO.print("Game identifier: ")
       line <- IO.readLine
       joinUri = uri / "game" / line.trim / "join"
       clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
@@ -151,5 +152,9 @@ object Client extends IOApp {
         } yield ()
       }
     } yield ()
+    res.handleErrorWith {
+      case exception: WebSocketHandshakeException => IO.println(exception.getResponse.body())
+      case _ => IO.unit
+    }
   }
 }

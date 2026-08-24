@@ -6,7 +6,7 @@ import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
 import com.evolution.command.Command
-import com.evolution.game.{GameId, GameService}
+import com.evolution.game.{GameId, GameService, GameServiceError}
 import com.evolution.http.dtos.GameDto.{GameIdDto, GameInDto, GamesOut}
 import com.evolution.player.Player.IdlePlayer
 import com.evolution.player.{PlayerId, Score, Username}
@@ -65,7 +65,7 @@ object GameController {
               for {
                 game <- service.createGame(value, player)
                 gameResponse = game match {
-                  case Left(value)  => BadRequest(value.toString)
+                  case Left(value)  => value.toResponse
                   case Right(value) => Created(value)
                 }
               } yield gameResponse
@@ -86,9 +86,31 @@ object GameController {
                   .subscribe(maxQueued = 10)
                   .map(game => WebSocketFrame.Text(game.asJson.noSpaces))
               )
-            case Left(value) => BadRequest(value.toString)
+            case Left(value) => value.toResponse
           }
         } yield response
     }
   }.orNotFound
+
+
+  trait GameServiceErrorsOps {
+    def toStatus[F[_]: Async](error: GameServiceError): F[Response[F]]
+  }
+
+  implicit val gameServiceErrors: GameServiceErrorsOps = new GameServiceErrorsOps {
+    override def toStatus[F[_]: Async](error: GameServiceError): F[Response[F]] = {
+      val dsl = Http4sDsl[F]
+      import dsl.*
+      error match {
+        case GameServiceError.GameNotFound => NotFound("Game not found")
+        case GameServiceError.GameAlreadyFinished => Conflict("Game already finished")
+        case GameServiceError.GameAlreadyRunning => Conflict("Game already started")
+      }
+    }
+  }
+
+  implicit class ToResponse(error: GameServiceError) {
+    def toResponse[F[_]: Async](implicit errorsConverter: GameServiceErrorsOps): F[Response[F]] =
+      errorsConverter.toStatus[F](error)
+  }
 }
