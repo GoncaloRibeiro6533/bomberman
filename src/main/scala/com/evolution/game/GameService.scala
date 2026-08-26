@@ -58,7 +58,18 @@ class GameService[F[_]: Async](
 
   private def createLoop(gameRunning: GameRunning): F[GameLoop[F]] =
     for {
-      gameLoop <- GameLoop.make(gameRunning, clock, (game: GameFinished) => repository.update(game)).allocated
-      _        <- repository.insertGameLoop(gameRunning, gameLoop)
+      gameLoop <- GameLoop
+        .make(
+          gameRunning,
+          clock,
+          (game: GameFinished) => {
+            for {
+              _ <- repository.update(game)
+              _ <- repository.stopGameLoop(game)
+            } yield ()
+          }
+        )
+        .allocated
+      _ <- repository.insertGameLoop(gameRunning, gameLoop)
     } yield gameLoop._1
 }

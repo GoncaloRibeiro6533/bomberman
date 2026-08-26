@@ -1,7 +1,7 @@
 package com.evolution.game
 
 import cats.effect.implicits.{effectResourceOps, genSpawnOps}
-import cats.effect.{Clock, Resource}
+import cats.effect.{Clock, Deferred, Resource}
 import cats.effect.kernel.Async
 import cats.effect.std.Queue
 import cats.implicits.*
@@ -15,7 +15,7 @@ case class GameLoop[F[_]: Async] private (
     clock: Clock[F],
     queue: Queue[F, Command],
     topic: Topic[F, Game],
-    onComplete: GameFinished => F[Unit]
+    onComplete: GameFinished => F[Unit],
 ) {
 
   def loop(game: GameRunning): F[Unit] = for {
@@ -62,8 +62,8 @@ object GameLoop {
       queue <- Queue.unbounded[F, Command].toResource
       topic <- Resource.eval(Topic[F, Game])
       gameLoop = GameLoop(clock, queue, topic, markAsFinished)
-      _ <- gameLoop.loop(game).background
-      _ <- gameLoop.tickProducer(Tick).background
+      _ <- gameLoop.loop(game).background.void
+      _ <- gameLoop.tickProducer(Tick).background.void
     } yield gameLoop
   }
 }

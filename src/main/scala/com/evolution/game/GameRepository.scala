@@ -15,7 +15,7 @@ trait GameRepository[F[_]] {
   def deleteGame(game: Game): F[Unit]
   def update(game: Game): F[Unit]
   def insertGameLoop(gameRunning: GameRunning, loop: (GameLoop[F], F[Unit])): F[GameLoop[F]]
-  def deleteGameLoop(gameFinished: GameFinished): F[Unit]
+  def stopGameLoop(gameFinished: GameFinished): F[Unit]
   def promoteGameToRunning(gameId: GameId, startedAt: Instant): F[Either[GameRepositoryError, GameRunning]]
 }
 

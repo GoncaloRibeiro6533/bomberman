@@ -1,6 +1,5 @@
 package com.evolution.http
 
-import cats.data.Kleisli
 import cats.effect.kernel.Async
 import cats.effect.std.Queue
 import cats.syntax.all.*
@@ -9,15 +8,12 @@ import com.evolution.command.Command
 import com.evolution.game.{GameId, GameService, GameServiceError}
 import com.evolution.http.dtos.GameDto.{GameIdDto, GameInDto, GamesOut}
 import com.evolution.player.Player.IdlePlayer
-import com.evolution.player.{PlayerId, Score, Username}
 import io.circe.parser.*
 import io.circe.syntax.EncoderOps
 import org.http4s.dsl.Http4sDsl
 import org.http4s.server.websocket.WebSocketBuilder2
 import org.http4s.websocket.WebSocketFrame
-import org.http4s.{HttpRoutes, Request, Response}
-
-import java.util.UUID
+import org.http4s.{AuthedRoutes, Response}
 
 object GameController {
   import org.http4s.circe.CirceEntityCodec.*
@@ -42,23 +38,18 @@ object GameController {
 
   def gameRoute[F[_]: Async](
       service: GameService[F]
-  )(wsb: WebSocketBuilder2[F]): Kleisli[F, Request[F], Response[F]] = {
+  )(wsb: WebSocketBuilder2[F]): AuthedRoutes[IdlePlayer, F] = {
     val dsl = Http4sDsl[F]
     import dsl.*
-    HttpRoutes.of[F] {
-      case GET -> Root / "game" / "all" =>
+    AuthedRoutes.of[IdlePlayer, F] {
+      case GET -> Root / "game" / "all" as _ =>
         for {
           games    <- service.getAllGames
           response <- Ok(GamesOut(games.map(game => GameIdDto(game.id))))
         } yield response
-      case req @ POST -> Root / "game" =>
-        val player = IdlePlayer(
-          PlayerId(UUID.fromString("c0707ed0-bffe-4a8b-a155-5c2642b45982")),
-          Username("Bob1").get,
-          Score.Zero
-        )
+      case req @ POST -> Root / "game" as player =>
         for {
-          gameIn <- req.as[GameInDto]
+          gameIn <- req.req.as[GameInDto]
           positiveNumber = PositiveNumber.fromInt(gameIn.nPlayers)
           response <- positiveNumber match {
             case Some(value) =>
@@ -73,9 +64,10 @@ object GameController {
           }
           res <- response
         } yield res
-      case GET -> Root / "game" / UUIDVar(gameId) / "join" =>
+      case GET -> Root / "game" / UUIDVar(gameId) / "join" as player =>
         for {
           game <- service.joinGame(GameId(gameId))
+          _    <- Async[F].delay(println(player))
           response <- game match {
             case Right(value) =>
               wsb.build(
@@ -90,8 +82,7 @@ object GameController {
           }
         } yield response
     }
-  }.orNotFound
-
+  }
 
   trait GameServiceErrorsOps {
     def toStatus[F[_]: Async](error: GameServiceError): F[Response[F]]
@@ -102,9 +93,9 @@ object GameController {
       val dsl = Http4sDsl[F]
       import dsl.*
       error match {
-        case GameServiceError.GameNotFound => NotFound("Game not found")
+        case GameServiceError.GameNotFound        => NotFound("Game not found")
         case GameServiceError.GameAlreadyFinished => Conflict("Game already finished")
-        case GameServiceError.GameAlreadyRunning => Conflict("Game already started")
+        case GameServiceError.GameAlreadyRunning  => Conflict("Game already started")
       }
     }
   }

@@ -112,7 +112,7 @@ final case class GameRunning(
       )
     val duration: Duration = Duration.between(startedAt, now)
     val remainingTime      = Duration.ofMinutes(2).minus(duration)
-    if (activePlayers.isEmpty || remainingTime.isNegative || remainingTime.isZero ) {
+    if (activePlayers.isEmpty || remainingTime.isNegative || remainingTime.isZero) {
       scala.Left(finish)
     } else {
       val remainingBombs = bombs.filterNot(bombsToDetonate.contains(_))

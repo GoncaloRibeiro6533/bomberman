@@ -11,7 +11,8 @@ import java.time.Instant
 
 class GameRepositoryInMem[F[_]: Async](
     private val games: Ref[F, Map[GameId, Game]],
-    private val loops: Ref[F, Map[GameId, (GameLoop[F], F[Unit])]]
+    private val loops: Ref[F, Map[GameId, (GameLoop[F], F[Unit])]],
+    private val matches: Ref[F,Map[GameId, Deferred[F,GameRunning]]],
 ) extends GameRepository[F] {
 
   override def findGame(gameId: GameId): F[Option[Game]] =
@@ -30,7 +31,7 @@ class GameRepositoryInMem[F[_]: Async](
   } yield game
 
   override def deleteGame(game: Game): F[Unit] =
-    games.update(_.filter(_._1 != game.id))
+    games.update(_.removed(game.id))
 
   override def update(game: Game): F[Unit] = for {
     _ <- games.update(_.updated(game.id, game))
@@ -47,11 +48,15 @@ class GameRepositoryInMem[F[_]: Async](
       }
   }
 
-  override def deleteGameLoop(gameFinished: GameFinished): F[Unit] =
-    for {
-      _ <- loops.update(_.filter(_._1 != gameFinished.id))
-      _ <- games.update(_.updated(gameFinished.id, gameFinished))
-    } yield ()
+  override def stopGameLoop(gameFinished: GameFinished): F[Unit] = for {
+    _ <- Async[F].delay(println(s"Stopping game ${gameFinished.id}"))
+    release <- loops.modify { currentLoops =>
+      val gameId       = gameFinished.id
+      val releaseMaybe = currentLoops.get(gameId).map(_._2)
+      (currentLoops.removed(gameId), releaseMaybe)
+    }
+    _ <- release.sequence_
+  } yield ()
 
   override def promoteGameToRunning(gameId: GameId, startedAt: Instant): F[Either[GameRepositoryError, GameRunning]] =
     games.modify { gamesMap =>
