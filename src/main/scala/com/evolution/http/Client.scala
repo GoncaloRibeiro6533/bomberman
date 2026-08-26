@@ -1,32 +1,51 @@
 package com.evolution.http
 
 import cats.Show
-import cats.effect.{ExitCode, IO, IOApp, Resource}
+import cats.effect.*
+import cats.effect.unsafe.implicits.global
 import cats.implicits.*
 import com.evolution.game.{Game, GameFinished, GameRunning, GameWaiting}
 import com.evolution.http.dtos.GameDto.*
-import com.evolution.player.PlayerId
+import com.evolution.http.dtos.PlayerDto.PlayerInDto
+import com.evolution.player.{AuthPlayer, PlayerId, Username}
 import com.evolution.util.KeyboardReader
 import io.circe.parser.*
 import io.circe.syntax.*
 import org.http4s.*
-import org.http4s.ember.client.*
+import org.http4s.Credentials.Token
+import org.http4s.Method.GET
+import org.http4s.circe.CirceEntityCodec.*
 import org.http4s.client.dsl.io.*
 import org.http4s.client.websocket.{WSConnectionHighLevel, WSFrame, WSRequest}
+import org.http4s.ember.client.*
+import org.http4s.headers.Authorization
 import org.http4s.implicits.*
 import org.http4s.jdkhttpclient.JdkWSClient
-import org.http4s.circe.CirceEntityCodec.*
-
 import java.net.http.{HttpClient, WebSocketHandshakeException}
-import java.util.UUID
 
 object Client extends IOApp {
   import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
 
-  private val uri                = uri"ws://localhost:9001"
-  private val playerId: PlayerId = PlayerId(UUID.fromString("c0707ed0-bffe-4a8b-a155-5c2642b45982"))
+  private val uri                                    = uri"ws://localhost:9001"
+  private val playerRef: Ref[IO, Option[AuthPlayer]] = Ref[IO].of(Option.empty[AuthPlayer]).unsafeRunSync()
 
   private def menu: IO[Int] = for {
+    _   <- IO.println("")
+    _   <- IO.println("")
+    _   <- IO.println("       MENU")
+    _   <- IO.println(" 1 - Log in")
+    _   <- IO.println(" 2 - Create user")
+    _   <- IO.println(" 99 - Exit")
+    _   <- IO.println("")
+    _   <- IO.print("Choose an option: ")
+    res <- IO.readLine
+    num <- res.trim.toIntOption match {
+      case Some(value) if (1 to 2).contains(value) || value == 99 => IO.pure(value)
+      case _                                                      => menuLogged
+    }
+  } yield num
+
+  private def menuLogged: IO[Int] = for {
     _   <- IO.println("")
     _   <- IO.println("")
     _   <- IO.println("       MENU")
@@ -39,19 +58,23 @@ object Client extends IOApp {
     res <- IO.readLine
     num <- res.trim.toIntOption match {
       case Some(value) if (1 to 3).contains(value) || value == 99 => IO.pure(value)
-      case _                                                      => menu
+      case _                                                      => menuLogged
     }
   } yield num
 
   private def sendCommand(client: WSConnectionHighLevel[IO], playerId: PlayerId): IO[Unit] =
     for {
       cmd <- KeyboardReader.readCommand[IO](playerId)
-      _   <- client.send(WSFrame.Text(cmd.asJson.noSpaces))
-      _   <- sendCommand(client, playerId)
+      _ = playerId
+      _ <- IO.println(cmd)
+      _ <- client.send(WSFrame.Text(cmd.asJson.noSpaces))
+      _ <- sendCommand(client, playerId)
     } yield ()
 
-  private def printBoard(game: GameRunning): IO[Unit] =
-    game.getMaze.toPrintable.traverse_(IO.println)
+  private def printBoard(game: GameRunning): IO[Unit] = for {
+    _ <- IO.println(f"${game.remainingTime.toMinutesPart}%02d:${game.remainingTime.toSecondsPart}%02d")
+    _ <- game.getMaze.toPrintable.traverse_(IO.println)
+  } yield ()
 
   private def printGame(game: Game): IO[Unit] = {
     game match {
@@ -69,7 +92,7 @@ object Client extends IOApp {
   }
 
   private implicit val showGamesList: Show[GamesOut] = Show.show { gamesOut =>
-    if(gamesOut.games.nonEmpty) gamesOut.games.map(game => game.show).mkString("\n")
+    if (gamesOut.games.nonEmpty) gamesOut.games.map(game => game.show).mkString("\n")
     else "No games available. Please create a new one."
   }
 
@@ -80,57 +103,141 @@ object Client extends IOApp {
     } yield ExitCode.Success
   }
 
-  private def selector: IO[Unit] =
+  private def selector: IO[Unit] = {
     for {
-      option <- menu
+      player <- playerRef.get
+      _ <- player match {
+        case Some(player) => printMenuLogged(player)
+        case None         => printMenu
+      }
+    } yield ()
+
+  }
+
+  private def printMenuLogged(
+      player: AuthPlayer
+  ) = {
+    for {
+      option <- menuLogged
       _ <- option match {
-        case 1  => listGames
-        case 2  => createGame
-        case 3  => joinGame
+        case 1  => listGames(player)
+        case 2  => createGame(player)
+        case 3  => joinGame(player)
         case 99 => IO.unit
         case _  => IO.println("Invalid option")
       }
       _ <- if (option == 99) IO.unit else selector
     } yield ()
+  }
 
-  private def createGame: IO[Unit] = {
+  private def printMenu = {
+    for {
+      option <- menu
+      _ <- option match {
+        case 1  => login
+        case 2  => createPlayer
+        case 99 => IO.unit
+        case _  => IO.println("Invalid option")
+      }
+      _ <- if (option == 99) IO.unit else selector
+    } yield ()
+  }
+
+  private def createPlayer: IO[Unit] = {
     EmberClientBuilder
       .default[IO]
       .build
       .use { client =>
         for {
-          _   <- IO.println("Creating game")
-          res <- client.expect[GameIdDto](Method.POST.apply(body = GameInDto(2), uri = uri / "game"))
-          _   <- IO.println(res.show)
+          _    <- IO.print("Username: ")
+          line <- IO.readLine
+          _ <- Username(line) match {
+            case Some(value) =>
+              for {
+                player <- client.expect[AuthPlayer](Method.POST.apply(body = PlayerInDto(value), uri = uri / "player"))
+                _      <- playerRef.set(Some(player))
+                _      <- IO.println(s"Logged as ${player.player.username.value}")
+              } yield ()
+            case None => createPlayer
+          }
         } yield ()
       }
   }
 
-  private def listGames: IO[Unit] = {
+  private def login: IO[Unit] = {
     EmberClientBuilder
       .default[IO]
       .build
       .use { client =>
         for {
-          _   <- IO.println("Getting games")
-          res <- client.expect[GamesOut](Method.GET.apply(uri = uri / "game" / "all"))
-          _   <- IO.println(res.show)
+          _    <- IO.print("Username: ")
+          line <- IO.readLine
+          _ <- Username(line) match {
+            case Some(value) =>
+              for {
+                player <- client.expect[AuthPlayer](
+                  Method.POST.apply(body = PlayerInDto(value), uri = uri / "player" / "login")
+                )
+                _ <- playerRef.set(Some(player))
+                _ <- IO.println(s"Logged as ${player.player.username.value}")
+              } yield ()
+            case None => login
+          }
         } yield ()
       }
   }
 
-  private def joinGame: IO[Unit] = {
+  private def createGame(player: AuthPlayer): IO[Unit] = {
+    EmberClientBuilder
+      .default[IO]
+      .build
+      .use { client =>
+        for {
+          _ <- IO.println("Creating game")
+          res <- client.expect[GameIdDto](
+            Method.POST.apply(body = GameInDto(2), uri = uri / "game", headers = generateAuthHeader(player))
+          )
+          _ <- IO.println(res.show)
+        } yield ()
+      }
+  }
+
+  private def listGames(player: AuthPlayer): IO[Unit] = {
+    EmberClientBuilder
+      .default[IO]
+      .build
+      .use { client =>
+        for {
+          _ <- IO.println("Getting games")
+          res <- client.expect[GamesOut](
+            Method.GET.apply(uri = uri / "game" / "all", headers = generateAuthHeader(player))
+          )
+          _ <- IO.println(res.show)
+        } yield ()
+      }
+  }
+
+  private def generateAuthHeader(player: AuthPlayer) = {
+    Headers(
+      Authorization(
+        Token(AuthScheme.Bearer, player.token.token.value.toString)
+      )
+    )
+  }
+
+  private def joinGame(player: AuthPlayer): IO[Unit] = {
     val res = for {
       _    <- IO.print("Game identifier: ")
       line <- IO.readLine
       joinUri = uri / "game" / line.trim / "join"
+      headers = generateAuthHeader(player)
       clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
         Resource
           .eval(IO(HttpClient.newHttpClient()))
-          .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(joinUri)))
+          .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
       _ <- clientResource.use { client =>
         for {
-          cmdReader <- sendCommand(client, playerId).start
+          cmdReader <- sendCommand(client, player.player.id).start
           _ <- client.receiveStream
             .collect { case WSFrame.Text(json, _) => decode[Game](json) }
             .evalTap {
@@ -154,7 +261,7 @@ object Client extends IOApp {
     } yield ()
     res.handleErrorWith {
       case exception: WebSocketHandshakeException => IO.println(exception.getResponse.body())
-      case _ => IO.unit
+      case _                                      => IO.unit
     }
   }
 }
