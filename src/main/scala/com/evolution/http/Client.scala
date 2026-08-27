@@ -2,7 +2,6 @@ package com.evolution.http
 
 import cats.Show
 import cats.effect.*
-import cats.effect.unsafe.implicits.global
 import cats.implicits.*
 import com.evolution.game.{Game, GameFinished, GameRunning, GameWaiting}
 import com.evolution.http.dtos.GameDto.*
@@ -21,13 +20,15 @@ import org.http4s.ember.client.*
 import org.http4s.headers.Authorization
 import org.http4s.implicits.*
 import org.http4s.jdkhttpclient.JdkWSClient
+
 import java.net.http.{HttpClient, WebSocketHandshakeException}
+import java.util.UUID
+import scala.util.Try
 
 object Client extends IOApp {
   import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
 
   private val uri                                    = uri"ws://localhost:9001"
-  private val playerRef: Ref[IO, Option[AuthPlayer]] = Ref[IO].of(Option.empty[AuthPlayer]).unsafeRunSync()
 
   private def menu: IO[Int] = for {
     _   <- IO.println("")
@@ -41,7 +42,7 @@ object Client extends IOApp {
     res <- IO.readLine
     num <- res.trim.toIntOption match {
       case Some(value) if (1 to 2).contains(value) || value == 99 => IO.pure(value)
-      case _                                                      => menuLogged
+      case _                                                      => menu
     }
   } yield num
 
@@ -82,8 +83,8 @@ object Client extends IOApp {
         IO.println("Waiting for players...")
       case running: GameRunning =>
         printBoard(running)
-      case GameFinished(_, _, _, _, _) =>
-        IO.println("Game over")
+      case gameFinished: GameFinished =>
+        IO.println(s"Game over: Winner is ${gameFinished.winner.username.value}")
     }
   }
 
@@ -96,26 +97,21 @@ object Client extends IOApp {
     else "No games available. Please create a new one."
   }
 
-  override def run(args: List[String]): IO[ExitCode] = {
-    for {
-      _ <- selector
-      _ <- IO.println("Terminated")
-    } yield ExitCode.Success
-  }
 
-  private def selector: IO[Unit] = {
+  private def selector(playerRef: Ref[IO,Option[AuthPlayer]]): IO[Unit] = {
     for {
       player <- playerRef.get
       _ <- player match {
-        case Some(player) => printMenuLogged(player)
-        case None         => printMenu
+        case Some(player) => printMenuLogged(player, playerRef)
+        case None         => printMenu(playerRef)
       }
     } yield ()
 
   }
 
   private def printMenuLogged(
-      player: AuthPlayer
+      player: AuthPlayer,
+      ref: Ref[IO,Option[AuthPlayer]]
   ) = {
     for {
       option <- menuLogged
@@ -126,24 +122,24 @@ object Client extends IOApp {
         case 99 => IO.unit
         case _  => IO.println("Invalid option")
       }
-      _ <- if (option == 99) IO.unit else selector
+      _ <- if (option == 99) IO.unit else selector(ref)
     } yield ()
   }
 
-  private def printMenu = {
+  private def printMenu(playerRef: Ref[IO,Option[AuthPlayer]]) = {
     for {
       option <- menu
       _ <- option match {
-        case 1  => login
-        case 2  => createPlayer
+        case 1  => login(playerRef)
+        case 2  => createPlayer(playerRef)
         case 99 => IO.unit
         case _  => IO.println("Invalid option")
       }
-      _ <- if (option == 99) IO.unit else selector
+      _ <- if (option == 99) IO.unit else selector(playerRef)
     } yield ()
   }
 
-  private def createPlayer: IO[Unit] = {
+  private def createPlayer(playerRef: Ref[IO,Option[AuthPlayer]]): IO[Unit] = {
     EmberClientBuilder
       .default[IO]
       .build
@@ -158,13 +154,13 @@ object Client extends IOApp {
                 _      <- playerRef.set(Some(player))
                 _      <- IO.println(s"Logged as ${player.player.username.value}")
               } yield ()
-            case None => createPlayer
+            case None => createPlayer(playerRef)
           }
         } yield ()
       }
   }
 
-  private def login: IO[Unit] = {
+  private def login(playerRef: Ref[IO,Option[AuthPlayer]]): IO[Unit] = {
     EmberClientBuilder
       .default[IO]
       .build
@@ -181,7 +177,7 @@ object Client extends IOApp {
                 _ <- playerRef.set(Some(player))
                 _ <- IO.println(s"Logged as ${player.player.username.value}")
               } yield ()
-            case None => login
+            case None => login(playerRef)
           }
         } yield ()
       }
@@ -198,6 +194,7 @@ object Client extends IOApp {
             Method.POST.apply(body = GameInDto(2), uri = uri / "game", headers = generateAuthHeader(player))
           )
           _ <- IO.println(res.show)
+          _ <- joinGameRequest(player,res.id.id)
         } yield ()
       }
   }
@@ -229,39 +226,59 @@ object Client extends IOApp {
     val res = for {
       _    <- IO.print("Game identifier: ")
       line <- IO.readLine
-      joinUri = uri / "game" / line.trim / "join"
-      headers = generateAuthHeader(player)
-      clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
-        Resource
-          .eval(IO(HttpClient.newHttpClient()))
-          .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
-      _ <- clientResource.use { client =>
-        for {
-          cmdReader <- sendCommand(client, player.player.id).start
-          _ <- client.receiveStream
-            .collect { case WSFrame.Text(json, _) => decode[Game](json) }
-            .evalTap {
-              case Right(game) => printGame(game)
-              case Left(error) => IO.println(s"Failed to decode game: $error")
-            }
-            .takeWhile {
-              case Left(_) => false
-              case Right(value) =>
-                value match {
-                  case _: GameWaiting  => true
-                  case _: GameRunning  => true
-                  case _: GameFinished => false
-                }
-            }
-            .compile
-            .drain
-          _ <- cmdReader.cancel
-        } yield ()
+      _ <- Try(UUID.fromString(line.trim)).toOption match {
+        case Some(uuid) => joinGameRequest(player, uuid)
+        case None => joinGame(player)
       }
     } yield ()
     res.handleErrorWith {
       case exception: WebSocketHandshakeException => IO.println(exception.getResponse.body())
       case _                                      => IO.unit
     }
+  }
+
+  private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
+  for {
+    _    <- IO.println(s"Joining Game ${gameId.show} ")
+    joinUri = uri / "game" / gameId / "join"
+    headers = generateAuthHeader(player)
+    clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
+      Resource
+        .eval(IO(HttpClient.newHttpClient()))
+        .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
+    _ <- clientResource.use { client =>
+      for {
+        cmdReader <- sendCommand(client, player.player.id).start
+        _ <- client.receiveStream
+          .collect { case WSFrame.Text(json, _) => decode[Game](json) }
+          .evalTap {
+            case Right(game) => printGame(game)
+            case Left(error) => IO.println(s"Failed to decode game: $error")
+          }
+          .takeWhile {
+            case Left(_) => false
+            case Right(value) =>
+              value match {
+                case _: GameWaiting  => true
+                case _: GameRunning  => true
+                case _: GameFinished => false
+              }
+          }
+          .compile
+          .drain
+        _ <- cmdReader.cancel
+      } yield ()
+    }
+  } yield ()
+
+
+
+
+  override def run(args: List[String]): IO[ExitCode] = {
+    for {
+      playerId <- Ref[IO].of[Option[AuthPlayer]](None)
+      _ <- selector(playerId)
+      _ <- IO.println("Terminated")
+    } yield ExitCode.Success
   }
 }

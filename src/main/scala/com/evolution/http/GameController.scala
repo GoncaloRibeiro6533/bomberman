@@ -5,7 +5,7 @@ import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
 import com.evolution.command.Command
-import com.evolution.game.{GameId, GameService, GameServiceError}
+import com.evolution.game.{GameId, GameService, GameRepositoryError}
 import com.evolution.http.dtos.GameDto.{GameIdDto, GameInDto, GamesOut}
 import com.evolution.player.Player.IdlePlayer
 import io.circe.parser.*
@@ -55,10 +55,7 @@ object GameController {
             case Some(value) =>
               for {
                 game <- service.createGame(value, player)
-                gameResponse = game match {
-                  case Left(value)  => value.toResponse
-                  case Right(value) => Created(value)
-                }
+                gameResponse = Created(game)
               } yield gameResponse
             case None => Async[F].pure(BadRequest("Invalid number of players"))
           }
@@ -66,8 +63,8 @@ object GameController {
         } yield res
       case GET -> Root / "game" / UUIDVar(gameId) / "join" as player =>
         for {
-          game <- service.joinGame(GameId(gameId))
-          _    <- Async[F].delay(println(player))
+          game <- service.joinGame(GameId(gameId), player)
+          _    <- Async[F].delay(println(game))
           response <- game match {
             case Right(value) =>
               wsb.build(
@@ -85,22 +82,22 @@ object GameController {
   }
 
   trait GameServiceErrorsOps {
-    def toStatus[F[_]: Async](error: GameServiceError): F[Response[F]]
+    def toStatus[F[_]: Async](error: GameRepositoryError): F[Response[F]]
   }
 
   implicit val gameServiceErrors: GameServiceErrorsOps = new GameServiceErrorsOps {
-    override def toStatus[F[_]: Async](error: GameServiceError): F[Response[F]] = {
+    override def toStatus[F[_]: Async](error: GameRepositoryError): F[Response[F]] = {
       val dsl = Http4sDsl[F]
       import dsl.*
       error match {
-        case GameServiceError.GameNotFound        => NotFound("Game not found")
-        case GameServiceError.GameAlreadyFinished => Conflict("Game already finished")
-        case GameServiceError.GameAlreadyRunning  => Conflict("Game already started")
+        case GameRepositoryError.GameNotFound        => NotFound("Game not found")
+        case GameRepositoryError.GameAlreadyFinished => Conflict("Game already finished")
+        case GameRepositoryError.GameAlreadyRunning  => Conflict("Game already started")
       }
     }
   }
 
-  implicit class ToResponse(error: GameServiceError) {
+  implicit class ToResponse(error: GameRepositoryError) {
     def toResponse[F[_]: Async](implicit errorsConverter: GameServiceErrorsOps): F[Response[F]] =
       errorsConverter.toStatus[F](error)
   }

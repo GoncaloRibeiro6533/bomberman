@@ -40,7 +40,7 @@ class PlayerRepositoryInMem[F[_]: Async](
     for {
       uuid <- IdGenerator.generateUUID[F]
       playerId = PlayerId(uuid)
-      player   = IdlePlayer(playerId, username, Score.Zero)
+      player   = IdlePlayer(playerId, username)
       res <- players.modify { oldPlayers =>
         oldPlayers.values.find(player => player.username == username) match {
           case Some(_) => (oldPlayers, UsernameAlreadyTaken.asLeft)

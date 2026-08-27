@@ -13,20 +13,18 @@ case class PlayerId(value: UUID) extends AnyVal
 sealed trait Player {
   def id: PlayerId
   def username: Username
-  def score: Score
 }
 
 object Player {
 
   @JsonCodec
-  final case class IdlePlayer(id: PlayerId, username: Username, score: Score) extends Player {
-    def toActivePlayer(cell: Cell)     = ActivePlayer(id = id, username = username, cell = cell, score = score)
-    def toJoiningPlayer: JoiningPlayer = JoiningPlayer(id, username, score)
+  final case class IdlePlayer(id: PlayerId, username: Username) extends Player {
+    def toJoiningPlayer: JoiningPlayer = JoiningPlayer(id, username)
   }
 
   @JsonCodec
-  final case class JoiningPlayer(id: PlayerId, username: Username, score: Score) extends Player {
-    def toActivePlayer(cell: Cell) = ActivePlayer(id = id, username = username, cell = cell, score = score)
+  final case class JoiningPlayer(id: PlayerId, username: Username) extends Player {
+    def toActivePlayer(cell: Cell) = ActivePlayer(id = id, username = username, cell = cell, score = Score.Zero)
   }
   @JsonCodec
   final case class ActivePlayer(
