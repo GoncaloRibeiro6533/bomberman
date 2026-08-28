@@ -22,7 +22,7 @@ sealed trait Game {
 
 @JsonCodec
 final case class GameWaiting(id: GameId, players: List[JoiningPlayer], nPlayers: PositiveNumber = PositiveNumber.Two)
-    extends Game {
+  extends Game {
   def start(startedAt: Instant): GameRunning = {
     val maze = Maze()
     GameRunning(
@@ -44,19 +44,19 @@ final case class GameWaiting(id: GameId, players: List[JoiningPlayer], nPlayers:
 
 @JsonCodec
 final case class GameRunning(
-    id: GameId,
-    nPlayers: PositiveNumber,
-    activePlayers: List[ActivePlayer],
-    deadPlayers: List[DeadPlayer] = Nil,
-    bombs: List[Bomb],
-    walls: List[Cell],
-    blocks: List[Cell],
-    startedAt: Instant,
-    remainingTime: Duration,
-    duration: Duration,
-    width: Int,
-    height: Int
-) extends Game {
+                              id: GameId,
+                              nPlayers: PositiveNumber,
+                              activePlayers: List[ActivePlayer],
+                              deadPlayers: List[DeadPlayer] = Nil,
+                              bombs: List[Bomb],
+                              walls: List[Cell],
+                              blocks: List[Cell],
+                              startedAt: Instant,
+                              remainingTime: Duration,
+                              duration: Duration,
+                              width: Int,
+                              height: Int
+                            ) extends Game {
 
   private def getPositions: List[Position] = {
     val playerPositions = activePlayers.map(_.cell.toPosition(PlayerPosition))
@@ -105,18 +105,18 @@ final case class GameRunning(
     val bombsToDetonate            = bombs.filter { bomb => bomb.isExpired(now) }
     val elapsed: Duration          = Duration.between(startedAt, now)
     val newRemainingTime: Duration = duration.minus(elapsed)
-    if (bombsToDetonate.nonEmpty) {
-      val bombsWithAffectedCells: Map[Bomb, List[Cell]] =
-        bombsToDetonate.foldRight(Map[Bomb, List[Cell]]().empty)((bomb, map) =>
-          map.updated(bomb, cellsInRadius(bomb.cell, bomb.radius.value))
-        )
-      val remainingBlocks = blocks.filterNot(block => bombsWithAffectedCells.values.flatten.toSet.contains(block))
-      val killedPlayers: Map[ActivePlayer, Killer] = getKilledPlayers(activePlayers, bombsWithAffectedCells)
-      val (newDeadPlayers, newActivePlayers) =
-        getPlayersWithScoreUpdated(activePlayers, deadPlayers, killedPlayers, bombsToDetonate)
-      if (newActivePlayers.isEmpty || newRemainingTime.isNegative || newRemainingTime.isZero) {
-        finish(newActivePlayers, newDeadPlayers).asLeft
-      } else {
+    if (activePlayers.isEmpty || newRemainingTime.isNegative || newRemainingTime.isZero) { // print at least once the empty board
+      finish(activePlayers, deadPlayers).asLeft
+    } else {
+      if (bombsToDetonate.nonEmpty) {
+        val bombsWithAffectedCells: Map[Bomb, List[Cell]] =
+          bombsToDetonate.foldRight(Map[Bomb, List[Cell]]().empty)((bomb, map) =>
+            map.updated(bomb, cellsInRadius(bomb.cell, bomb.radius.value))
+          )
+        val remainingBlocks = blocks.filterNot(block => bombsWithAffectedCells.values.flatten.toSet.contains(block))
+        val killedPlayers: Map[ActivePlayer, Killer] = getKilledPlayers(activePlayers, bombsWithAffectedCells)
+        val (newDeadPlayers, newActivePlayers) =
+          getPlayersWithScoreUpdated(activePlayers, deadPlayers, killedPlayers, bombsToDetonate)
         val remainingBombs = bombs.filterNot(bombsToDetonate.contains(_))
         copy(
           activePlayers = newActivePlayers,
@@ -125,15 +125,15 @@ final case class GameRunning(
           bombs = remainingBombs,
           remainingTime = newRemainingTime
         ).asRight
-      }
-    } else this.copy(remainingTime = newRemainingTime).asRight
+      } else copy(remainingTime = newRemainingTime).asRight
+    }
   }
 
   private type Killer = PlayerId
   private def getKilledPlayers(
-      activePlayers: List[ActivePlayer],
-      affectedCells: Map[Bomb, List[Cell]]
-  ): Map[ActivePlayer, Killer] = {
+                                activePlayers: List[ActivePlayer],
+                                affectedCells: Map[Bomb, List[Cell]]
+                              ): Map[ActivePlayer, Killer] = {
     val killedPlayers: Map[ActivePlayer, Killer] = activePlayers.foldRight(Map[ActivePlayer, Killer]().empty) {
       (player, map) =>
         affectedCells.find { case (_, cells) =>
@@ -147,11 +147,11 @@ final case class GameRunning(
   }
 
   private def getPlayersWithScoreUpdated(
-      activePlayers: List[ActivePlayer],
-      deadPlayers: List[DeadPlayer],
-      killedPlayers: Map[ActivePlayer, Killer],
-      bombsToDetonate: List[Bomb]
-  ): (List[DeadPlayer], List[ActivePlayer]) = {
+                                          activePlayers: List[ActivePlayer],
+                                          deadPlayers: List[DeadPlayer],
+                                          killedPlayers: Map[ActivePlayer, Killer],
+                                          bombsToDetonate: List[Bomb]
+                                        ): (List[DeadPlayer], List[ActivePlayer]) = {
     val invertedMap: Map[Killer, Iterable[ActivePlayer]] = killedPlayers
       .groupBy { case (_, killer) =>
         killer
@@ -170,11 +170,11 @@ final case class GameRunning(
   }
 
   private def newDeadPlayers(
-      deadPlayers: List[DeadPlayer],
-      deadPlayersUpdatedScore: List[DeadPlayer],
-      activePlayersUpdatedScore: List[ActivePlayer],
-      playersKilled: List[ActivePlayer]
-  ): List[DeadPlayer] = {
+                              deadPlayers: List[DeadPlayer],
+                              deadPlayersUpdatedScore: List[DeadPlayer],
+                              activePlayersUpdatedScore: List[ActivePlayer],
+                              playersKilled: List[ActivePlayer]
+                            ): List[DeadPlayer] = {
     val activeToDeadPlayersNoScoreUpdated = playersKilled.distinct
       .filterNot(player => activePlayersUpdatedScore.exists(_.id == player.id))
       .map(_.toDeadPlayer)
@@ -185,11 +185,11 @@ final case class GameRunning(
   }
 
   private def newActivePlayers(
-      activePlayers: List[ActivePlayer],
-      activePlayersUpdatedScore: List[ActivePlayer],
-      playersKilled: List[ActivePlayer],
-      bombsToDetonate: List[Bomb]
-  ): List[ActivePlayer] = {
+                                activePlayers: List[ActivePlayer],
+                                activePlayersUpdatedScore: List[ActivePlayer],
+                                playersKilled: List[ActivePlayer],
+                                bombsToDetonate: List[Bomb]
+                              ): List[ActivePlayer] = {
     val activePlayersWithNoUpdatedScoreNotKilled = activePlayers.filter(player =>
       !playersKilled.exists(_.id == player.id) && !activePlayersUpdatedScore.exists(_.id == player.id)
     )
@@ -201,10 +201,10 @@ final case class GameRunning(
   }
 
   private def updateKillersScores(
-      invertedMap: Map[Killer, Iterable[ActivePlayer]],
-      deadPlayers: List[DeadPlayer],
-      activePlayers: List[ActivePlayer]
-  ): (List[DeadPlayer], List[ActivePlayer]) = {
+                                   invertedMap: Map[Killer, Iterable[ActivePlayer]],
+                                   deadPlayers: List[DeadPlayer],
+                                   activePlayers: List[ActivePlayer]
+                                 ): (List[DeadPlayer], List[ActivePlayer]) = {
     val updatedKillersScore = invertedMap
       .map { case (killer, players) =>
         val points = players.map(player => if (player.id != killer) 1 else -1).sum
@@ -278,9 +278,9 @@ final case class GameRunning(
 
 @JsonCodec
 final case class GameFinished(
-    id: GameId,
-    nPlayers: PositiveNumber,
-    winner: Player,
-    survivors: List[ActivePlayer],
-    killed: List[DeadPlayer]
-) extends Game
+                               id: GameId,
+                               nPlayers: PositiveNumber,
+                               winner: Player,
+                               survivors: List[ActivePlayer],
+                               killed: List[DeadPlayer]
+                             ) extends Game
