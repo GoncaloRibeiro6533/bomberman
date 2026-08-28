@@ -64,7 +64,6 @@ object GameController {
       case GET -> Root / "game" / UUIDVar(gameId) / "join" as player =>
         for {
           game <- service.joinGame(GameId(gameId), player)
-          _    <- Async[F].delay(println(game))
           response <- game match {
             case Right(value) =>
               wsb.build(

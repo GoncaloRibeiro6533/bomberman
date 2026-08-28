@@ -68,7 +68,6 @@ object Server extends IOApp {
           .withHttpWebSocketApp(wsb => app(wsb))
           .build
           .useForever
-          .as(ExitCode.Success)
       } yield exitCode
     }
   }
