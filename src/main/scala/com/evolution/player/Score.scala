@@ -2,7 +2,7 @@ package com.evolution.player
 
 import io.circe.{Decoder, Encoder}
 
-final class Score private (val value: Int) extends AnyVal{
+final class Score private (val value: Int) extends AnyVal {
   def +(value: Int): Score = new Score(Math.max(0, this.value + value))
 }
 

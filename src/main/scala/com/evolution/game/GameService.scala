@@ -9,7 +9,6 @@ import com.evolution.player.Player.IdlePlayer
 
 sealed trait GameServiceError
 
-
 class GameService[F[_]: Async](
     private val repository: GameRepository[F],
     private val clock: Clock[F]
@@ -17,14 +16,13 @@ class GameService[F[_]: Async](
 
   def createGame(nPlayers: PositiveNumber, player: IdlePlayer): F[GameWaiting] = {
     val res = for {
-      game <- repository.insertGame(nPlayers, player)
-      gameRunning <-Deferred[F,GameRunning]
-      _ <-repository.insertFutureGameRunning(game.id, gameRunning)
-      _ <- createLoop(gameWaiting = game, gameRunning = gameRunning)
+      game        <- repository.insertGame(nPlayers, player)
+      gameRunning <- Deferred[F, GameRunning]
+      _           <- repository.insertFutureGameRunning(game.id, gameRunning)
+      _           <- createLoop(gameWaiting = game, gameRunning = gameRunning)
     } yield game
     res
   }
-
 
   def getAllGames: F[List[GameWaiting]] = for {
     games <- repository.findAll()
@@ -33,8 +31,10 @@ class GameService[F[_]: Async](
 
   def joinGame(gameId: GameId, player: IdlePlayer): F[Either[GameRepositoryError, GameLoop[F]]] = {
     val res: EitherT[F, GameRepositoryError, GameLoop[F]] = for {
-      gameWaiting: GameWaiting <- EitherT[F,GameRepositoryError, GameWaiting](repository.addPlayerToGame(gameId, player))
-      _ <- startGame(gameId, gameWaiting)
+      gameWaiting: GameWaiting <- EitherT[F, GameRepositoryError, GameWaiting](
+        repository.addPlayerToGame(gameId, player)
+      )
+      _    <- startGame(gameId, gameWaiting)
       loop <- EitherT(repository.getGameLoop(gameId))
     } yield loop
     res.value
@@ -44,9 +44,9 @@ class GameService[F[_]: Async](
     if (gameWaiting.players.size == gameWaiting.nPlayers.value) {
       for {
         gameRunning <- EitherT[F, GameRepositoryError, GameRunning](promoteToRunning(gameId))
-        _ <- EitherT[F, GameRepositoryError, Unit](repository.completeGameRunning(gameRunning))
+        _           <- EitherT[F, GameRepositoryError, Unit](repository.completeGameRunning(gameRunning))
       } yield ()
-    } else     EitherT.rightT[F, GameRepositoryError](())
+    } else EitherT.rightT[F, GameRepositoryError](())
   }
 
   private def promoteToRunning(gameId: GameId): F[Either[GameRepositoryError, GameRunning]] = {
@@ -56,7 +56,7 @@ class GameService[F[_]: Async](
     } yield gameRunning
   }
 
-  private def createLoop(gameWaiting: GameWaiting,  gameRunning: Deferred[F,GameRunning]): F[GameLoop[F]] =
+  private def createLoop(gameWaiting: GameWaiting, gameRunning: Deferred[F, GameRunning]): F[GameLoop[F]] =
     for {
       gameLoop <- GameLoop
         .make(

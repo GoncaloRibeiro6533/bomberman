@@ -12,12 +12,12 @@ import fs2.concurrent.Topic
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 case class GameLoop[F[_]: Async] private (
-                                           clock: Clock[F],
-                                           queue: Queue[F, Command],
-                                           topic: Topic[F, Game],
-                                           onComplete: GameFinished => F[Unit],
-                                           gameRunning: Deferred[F,GameRunning], // could be replaced with Ref[F,Game] on loop as parameter??
-                                         ) {
+    clock: Clock[F],
+    queue: Queue[F, Command],
+    topic: Topic[F, Game],
+    onComplete: GameFinished => F[Unit],
+    gameRunning: Deferred[F, GameRunning] // could be replaced with Ref[F,Game] on loop as parameter??
+) {
 
   def loop(game: Game): F[Unit] = for {
     command <- queue.take
@@ -27,14 +27,13 @@ case class GameLoop[F[_]: Async] private (
           gameState <- gameRunning.tryGet
           _ <- gameState match {
             case Some(value) => loop(value)
-            case None => loop(gameWaiting)
+            case None        => loop(gameWaiting)
           }
         } yield ()
       case gameRunning: GameRunning => onGameRunning(gameRunning, command)
-      case _: GameFinished => Async[F].unit
+      case _: GameFinished          => Async[F].unit
     }
   } yield ()
-
 
   private def onGameRunning(game: GameRunning, command: Command): F[Unit] = for {
     instant <- clock.realTimeInstant
@@ -70,11 +69,11 @@ case class GameLoop[F[_]: Async] private (
 object GameLoop {
 
   def make[F[_]: Async](
-                         gameWaiting: GameWaiting,
-                         gameRunning: Deferred[F,GameRunning],
-                         clock: Clock[F],
-                         markAsFinished: GameFinished => F[Unit]
-                       ): Resource[F, GameLoop[F]] = {
+      gameWaiting: GameWaiting,
+      gameRunning: Deferred[F, GameRunning],
+      clock: Clock[F],
+      markAsFinished: GameFinished => F[Unit]
+  ): Resource[F, GameLoop[F]] = {
     for {
       queue <- Queue.unbounded[F, Command].toResource
       topic <- Resource.eval(Topic[F, Game])

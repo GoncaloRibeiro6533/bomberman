@@ -28,7 +28,7 @@ import scala.util.Try
 object Client extends IOApp {
   import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
 
-  private val uri                                    = uri"ws://localhost:9001"
+  private val uri = uri"ws://localhost:9001"
 
   private def menu: IO[Int] = for {
     _   <- IO.println("")
@@ -97,8 +97,7 @@ object Client extends IOApp {
     else "No games available. Please create a new one."
   }
 
-
-  private def selector(playerRef: Ref[IO,Option[AuthPlayer]]): IO[Unit] = {
+  private def selector(playerRef: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
     for {
       player <- playerRef.get
       _ <- player match {
@@ -111,7 +110,7 @@ object Client extends IOApp {
 
   private def printMenuLogged(
       player: AuthPlayer,
-      ref: Ref[IO,Option[AuthPlayer]]
+      ref: Ref[IO, Option[AuthPlayer]]
   ) = {
     for {
       option <- menuLogged
@@ -126,7 +125,7 @@ object Client extends IOApp {
     } yield ()
   }
 
-  private def printMenu(playerRef: Ref[IO,Option[AuthPlayer]]) = {
+  private def printMenu(playerRef: Ref[IO, Option[AuthPlayer]]) = {
     for {
       option <- menu
       _ <- option match {
@@ -139,7 +138,7 @@ object Client extends IOApp {
     } yield ()
   }
 
-  private def createPlayer(playerRef: Ref[IO,Option[AuthPlayer]]): IO[Unit] = {
+  private def createPlayer(playerRef: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
     EmberClientBuilder
       .default[IO]
       .build
@@ -160,7 +159,7 @@ object Client extends IOApp {
       }
   }
 
-  private def login(playerRef: Ref[IO,Option[AuthPlayer]]): IO[Unit] = {
+  private def login(playerRef: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
     EmberClientBuilder
       .default[IO]
       .build
@@ -194,7 +193,7 @@ object Client extends IOApp {
             Method.POST.apply(body = GameInDto(2), uri = uri / "game", headers = generateAuthHeader(player))
           )
           _ <- IO.println(res.show)
-          _ <- joinGameRequest(player,res.id.id)
+          _ <- joinGameRequest(player, res.id.id)
         } yield ()
       }
   }
@@ -228,7 +227,7 @@ object Client extends IOApp {
       line <- IO.readLine
       _ <- Try(UUID.fromString(line.trim)).toOption match {
         case Some(uuid) => joinGameRequest(player, uuid)
-        case None => joinGame(player)
+        case None       => joinGame(player)
       }
     } yield ()
     res.handleErrorWith {
@@ -238,47 +237,44 @@ object Client extends IOApp {
   }
 
   private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
-  for {
-    _    <- IO.println(s"Joining Game ${gameId.show} ")
-    joinUri = uri / "game" / gameId / "join"
-    headers = generateAuthHeader(player)
-    clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
-      Resource
-        .eval(IO(HttpClient.newHttpClient()))
-        .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
-    _ <- clientResource.use { client =>
-      for {
-        cmdReader <- sendCommand(client, player.player.id).start
-        _ <- client.receiveStream
-          .collect { case WSFrame.Text(json, _) => decode[Game](json) }
-          .evalTap {
-            case Right(game) => printGame(game)
-            case Left(error) => IO.println(s"Failed to decode game: $error")
-          }
-          .takeWhile {
-            case Left(_) => false
-            case Right(value) =>
-              value match {
-                case _: GameWaiting  => true
-                case _: GameRunning  => true
-                case _: GameFinished => false
-              }
-          }
-          .compile
-          .drain
-        _ <- cmdReader.cancel
-      } yield ()
-    }
-  } yield ()
-
-
-
+    for {
+      _ <- IO.println(s"Joining Game ${gameId.show} ")
+      joinUri = uri / "game" / gameId / "join"
+      headers = generateAuthHeader(player)
+      clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
+        Resource
+          .eval(IO(HttpClient.newHttpClient()))
+          .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
+      _ <- clientResource.use { client =>
+        for {
+          cmdReader <- sendCommand(client, player.player.id).start
+          _ <- client.receiveStream
+            .collect { case WSFrame.Text(json, _) => decode[Game](json) }
+            .evalTap {
+              case Right(game) => printGame(game)
+              case Left(error) => IO.println(s"Failed to decode game: $error")
+            }
+            .takeWhile {
+              case Left(_) => false
+              case Right(value) =>
+                value match {
+                  case _: GameWaiting  => true
+                  case _: GameRunning  => true
+                  case _: GameFinished => false
+                }
+            }
+            .compile
+            .drain
+          _ <- cmdReader.cancel
+        } yield ()
+      }
+    } yield ()
 
   override def run(args: List[String]): IO[ExitCode] = {
     for {
       playerId <- Ref[IO].of[Option[AuthPlayer]](None)
-      _ <- selector(playerId)
-      _ <- IO.println("Terminated")
+      _        <- selector(playerId)
+      _        <- IO.println("Terminated")
     } yield ExitCode.Success
   }
 }
