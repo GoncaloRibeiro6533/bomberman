@@ -14,6 +14,7 @@ import org.http4s.*
 import org.http4s.Credentials.Token
 import org.http4s.Method.GET
 import org.http4s.circe.CirceEntityCodec.*
+import org.http4s.client.Client
 import org.http4s.client.dsl.io.*
 import org.http4s.client.websocket.{WSConnectionHighLevel, WSFrame, WSRequest}
 import org.http4s.ember.client.*
@@ -25,7 +26,7 @@ import java.net.http.{HttpClient, WebSocketHandshakeException}
 import java.util.UUID
 import scala.util.Try
 
-object Client extends IOApp {
+object ClientApp extends IOApp {
   import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
 
   private val uri = uri"ws://localhost:9001"
@@ -97,121 +98,96 @@ object Client extends IOApp {
     else "No games available. Please create a new one."
   }
 
-  private def selector(playerRef: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
+  private def selector(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] =
     for {
       player <- playerRef.get
       _ <- player match {
-        case Some(player) => printMenuLogged(player, playerRef)
-        case None         => printMenu(playerRef)
+        case Some(player) => printMenuLogged(player, playerRef, client)
+        case None         => printMenu(playerRef, client)
       }
     } yield ()
 
-  }
-
   private def printMenuLogged(
       player: AuthPlayer,
-      ref: Ref[IO, Option[AuthPlayer]]
+      ref: Ref[IO, Option[AuthPlayer]],
+      client: Client[IO]
   ) = {
     for {
       option <- menuLogged
       _ <- option match {
-        case 1  => listGames(player)
-        case 2  => createGame(player)
+        case 1  => listGames(player, client)
+        case 2  => createGame(player, client)
         case 3  => joinGame(player)
         case 99 => IO.unit
         case _  => IO.println("Invalid option")
       }
-      _ <- if (option == 99) IO.unit else selector(ref)
+      _ <- if (option == 99) IO.unit else selector(ref, client)
     } yield ()
   }
 
-  private def printMenu(playerRef: Ref[IO, Option[AuthPlayer]]) = {
+  private def printMenu(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]) = {
     for {
       option <- menu
       _ <- option match {
-        case 1  => login(playerRef)
-        case 2  => createPlayer(playerRef)
+        case 1  => login(playerRef, client)
+        case 2  => createPlayer(playerRef, client)
         case 99 => IO.unit
         case _  => IO.println("Invalid option")
       }
-      _ <- if (option == 99) IO.unit else selector(playerRef)
+      _ <- if (option == 99) IO.unit else selector(playerRef, client)
     } yield ()
   }
 
-  private def createPlayer(playerRef: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
-    EmberClientBuilder
-      .default[IO]
-      .build
-      .use { client =>
-        for {
-          _    <- IO.print("Username: ")
-          line <- IO.readLine
-          _ <- Username(line) match {
-            case Some(value) =>
-              for {
-                player <- client.expect[AuthPlayer](Method.POST.apply(body = PlayerInDto(value), uri = uri / "player"))
-                _      <- playerRef.set(Some(player))
-                _      <- IO.println(s"Logged as ${player.player.username.value}")
-              } yield ()
-            case None => createPlayer(playerRef)
-          }
-        } yield ()
+  private def createPlayer(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] =
+    for {
+      _    <- IO.print("Username: ")
+      line <- IO.readLine
+      _ <- Username(line) match {
+        case Some(value) =>
+          for {
+            player <- client.expect[AuthPlayer](Method.POST.apply(body = PlayerInDto(value), uri = uri / "player"))
+            _      <- playerRef.set(Some(player))
+            _      <- IO.println(s"Logged as ${player.player.username.value}")
+          } yield ()
+        case None => createPlayer(playerRef, client)
       }
-  }
+    } yield ()
 
-  private def login(playerRef: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
-    EmberClientBuilder
-      .default[IO]
-      .build
-      .use { client =>
-        for {
-          _    <- IO.print("Username: ")
-          line <- IO.readLine
-          _ <- Username(line) match {
-            case Some(value) =>
-              for {
-                player <- client.expect[AuthPlayer](
-                  Method.POST.apply(body = PlayerInDto(value), uri = uri / "player" / "login")
-                )
-                _ <- playerRef.set(Some(player))
-                _ <- IO.println(s"Logged as ${player.player.username.value}")
-              } yield ()
-            case None => login(playerRef)
-          }
-        } yield ()
+  private def login(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] =
+    for {
+      _    <- IO.print("Username: ")
+      line <- IO.readLine
+      _ <- Username(line) match {
+        case Some(value) =>
+          for {
+            player <- client.expect[AuthPlayer](
+              Method.POST.apply(body = PlayerInDto(value), uri = uri / "player" / "login")
+            )
+            _ <- playerRef.set(Some(player))
+            _ <- IO.println(s"Logged as ${player.player.username.value}")
+          } yield ()
+        case None => login(playerRef, client)
       }
-  }
+    } yield ()
 
-  private def createGame(player: AuthPlayer): IO[Unit] = {
-    EmberClientBuilder
-      .default[IO]
-      .build
-      .use { client =>
-        for {
-          _ <- IO.println("Creating game")
-          res <- client.expect[GameIdDto](
-            Method.POST.apply(body = GameInDto(2), uri = uri / "game", headers = generateAuthHeader(player))
-          )
-          _ <- IO.println(res.show)
-          _ <- joinGameRequest(player, res.id.id)
-        } yield ()
-      }
-  }
+  private def createGame(player: AuthPlayer, client: Client[IO]): IO[Unit] =
+    for {
+      _ <- IO.println("Creating game")
+      res <- client.expect[GameIdDto](
+        Method.POST.apply(body = GameInDto(2), uri = uri / "game", headers = generateAuthHeader(player))
+      )
+      _ <- IO.println(res.show)
+      _ <- joinGameRequest(player, res.id.id)
+    } yield ()
 
-  private def listGames(player: AuthPlayer): IO[Unit] = {
-    EmberClientBuilder
-      .default[IO]
-      .build
-      .use { client =>
-        for {
-          _ <- IO.println("Getting games")
-          res <- client.expect[GamesOut](
-            Method.GET.apply(uri = uri / "game" / "all", headers = generateAuthHeader(player))
-          )
-          _ <- IO.println(res.show)
-        } yield ()
-      }
-  }
+  private def listGames(player: AuthPlayer, client: Client[IO]): IO[Unit] =
+    for {
+      _ <- IO.println("Getting games")
+      res <- client.expect[GamesOut](
+        Method.GET.apply(uri = uri / "game" / "all", headers = generateAuthHeader(player))
+      )
+      _ <- IO.println(res.show)
+    } yield ()
 
   private def generateAuthHeader(player: AuthPlayer) = {
     Headers(
@@ -271,10 +247,15 @@ object Client extends IOApp {
     } yield ()
 
   override def run(args: List[String]): IO[ExitCode] = {
-    for {
-      playerId <- Ref[IO].of[Option[AuthPlayer]](None)
-      _        <- selector(playerId)
-      _        <- IO.println("Terminated")
-    } yield ExitCode.Success
+    EmberClientBuilder
+      .default[IO]
+      .build
+      .use { (client: Client[IO]) =>
+        for {
+          playerId <- Ref[IO].of[Option[AuthPlayer]](None)
+          _        <- selector(playerId, client)
+          _        <- IO.println("Terminated")
+        } yield ExitCode.Success
+      }
   }
 }
