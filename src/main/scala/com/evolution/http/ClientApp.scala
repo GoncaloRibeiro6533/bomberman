@@ -197,8 +197,8 @@ object ClientApp extends IOApp {
     )
   }
 
-  private def joinGame(player: AuthPlayer): IO[Unit] = {
-    val res = for {
+  private def joinGame(player: AuthPlayer): IO[Unit] =
+    for {
       _    <- IO.print("Game identifier: ")
       line <- IO.readLine
       _ <- Try(UUID.fromString(line.trim)).toOption match {
@@ -206,11 +206,6 @@ object ClientApp extends IOApp {
         case None       => joinGame(player)
       }
     } yield ()
-    res.handleErrorWith {
-      case exception: WebSocketHandshakeException => IO.println(exception.getResponse.body())
-      case _                                      => IO.unit
-    }
-  }
 
   private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
     for {
