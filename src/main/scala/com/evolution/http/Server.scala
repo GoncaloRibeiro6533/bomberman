@@ -33,6 +33,10 @@ object Server extends IOApp {
       GameController.gameRoute(gameService)(wsb)
   }
 
+  private val playerAuthedRoutes: PlayerService[IO] => AuthedRoutes[IdlePlayer, IO] = { playerService =>
+    PlayerController.playerRouteAuthenticated(playerService)
+  }
+
   private val onFailure: AuthedRoutes[PlayerRepositoryError, IO] = Kleisli { _ =>
     OptionT.pure[IO](Response[IO](status = Status.Unauthorized))
   }
@@ -48,7 +52,8 @@ object Server extends IOApp {
         wsb: WebSocketBuilder2[IO]
     ) =>
       val middleware = authMiddleware(playerService)
-      middleware(gameRoutes(gameService, wsb))
+      val authRoutes = Seq(gameRoutes(gameService, wsb), playerAuthedRoutes(playerService)).reduce(_ <+> _)
+      middleware(authRoutes)
   }
 
   override def run(args: List[String]): IO[ExitCode] = {

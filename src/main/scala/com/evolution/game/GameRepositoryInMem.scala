@@ -89,7 +89,7 @@ class GameRepositoryInMem[F[_]: Async](
                 && !gameWaiting.players.exists(_.id == player.id)
               ) (currentGames, GameAlreadyRunning.asLeft)
               else {
-                val newGame = gameWaiting.copy(players = (player.toJoiningPlayer +: gameWaiting.players).distinct)
+                val newGame = gameWaiting.copy(players = player.toJoiningPlayer +: gameWaiting.players)
                 (currentGames.updated(gameId, newGame), newGame.asRight)
               }
             case _: GameRunning  => (currentGames, GameAlreadyRunning.asLeft)

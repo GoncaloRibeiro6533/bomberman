@@ -5,9 +5,10 @@ import cats.effect.kernel.Async
 import cats.syntax.all.*
 import com.evolution.http.dtos.PlayerDto.PlayerInDto
 import com.evolution.player.*
+import com.evolution.player.Player.IdlePlayer
 import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.`WWW-Authenticate`
-import org.http4s.{Challenge, HttpRoutes, Response}
+import org.http4s.{AuthedRoutes, Challenge, HttpRoutes, Response}
 
 object PlayerController {
   import org.http4s.circe.CirceEntityCodec.*
@@ -40,6 +41,19 @@ object PlayerController {
 
   }
 
+  def playerRouteAuthenticated[F[_]: Async](
+      service: PlayerService[F]
+  ): AuthedRoutes[IdlePlayer, F] = {
+    val dsl = Http4sDsl[F]
+    import dsl.*
+    AuthedRoutes.of[IdlePlayer, F] { case DELETE -> Root / "player" / "logout" as player =>
+      for {
+        _   <- service.logOut(player)
+        res <- Ok()
+      } yield res
+    }
+  }
+
   trait PlayerServiceErrorsOps {
     def toStatus[F[_]: Async](error: PlayerRepositoryError): F[Response[F]]
   }
@@ -50,7 +64,7 @@ object PlayerController {
       import dsl.*
       error match {
         case PlayerNotFound       => NotFound("Player not found")
-        case TokenNotFound        => NotFound("Toke not found")
+        case TokenNotFound        => NotFound("Token not found")
         case UsernameAlreadyTaken => Conflict("Username already taken")
         case com.evolution.player.Unauthorized | NoToken | InvalidUUID =>
           Unauthorized(`WWW-Authenticate`.apply(NonEmptyList.of(Challenge("WWW-Authenticate", ""))))

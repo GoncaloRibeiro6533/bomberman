@@ -32,7 +32,7 @@ object GameController {
           case Some(value) => queue.offer(value)
           case None        => Async[F].unit
         }
-      case WebSocketFrame.Close(_) => Async[F].unit
+      case WebSocketFrame.Close(_) => Async[F].unit // TODO remove player
       case _                       => Async[F].unit
     }
 
