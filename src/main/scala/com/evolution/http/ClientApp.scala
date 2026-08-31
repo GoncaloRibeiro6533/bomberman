@@ -158,7 +158,7 @@ object ClientApp extends IOApp {
       response.bodyText.compile.string.map { bodyString =>
         if (response.status.isSuccess) {
           decode[O](bodyString) match {
-            case Left(value)  => "".asLeft
+            case Left(_)  => "".asLeft
             case Right(value) => value.asRight
           }
         } else bodyString.asLeft

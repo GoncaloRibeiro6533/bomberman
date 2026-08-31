@@ -16,7 +16,6 @@ import scala.util.Try
   */
 
 object MyAuthMiddleware {
-// TODO change To Sattus
   def authPlayerEither[F[_]: Async](
       service: PlayerService[F]
   ): Kleisli[F, Request[F], Either[PlayerRepositoryError, IdlePlayer]] = Kleisli { req =>
