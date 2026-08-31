@@ -143,8 +143,8 @@ object ClientApp extends IOApp {
       client: Client[IO],
       uri: Uri,
       method: Method,
-      body: Option[I],
-      headers: Option[Headers]
+      body: Option[I] = None,
+      headers: Option[Headers] = None,
   )(implicit entityEncoder: EntityEncoder[IO, I], entityDecoder: Decoder[O]): IO[Option[O]] = method match {
     case GET    => handleResponse[O](client, addHeadersAndBody[I](GET, uri, body, headers))
     case POST   => handleResponse[O](client, addHeadersAndBody[I](POST, uri, body, headers))
@@ -199,7 +199,6 @@ object ClientApp extends IOApp {
           uri = uri / "player",
           POST,
           PlayerInDto(username).some,
-          None
         )
       )
       _ <- OptionT.liftF(playerRef.set(Some(player)))
@@ -219,7 +218,6 @@ object ClientApp extends IOApp {
           uri / "player" / "login",
           POST,
           PlayerInDto(username).some,
-          None
         )
       )
 
@@ -230,7 +228,7 @@ object ClientApp extends IOApp {
   }
 
   private def logout(client: Client[IO], player: AuthPlayer, ref: Ref[IO, Option[AuthPlayer]]): IO[Unit] = for {
-    _ <- makeRequest[Unit, Unit](client, uri / "player" / "logout", DELETE, None, generateAuthHeader(player).some)
+    _ <- makeRequest[Unit, Unit](client, uri / "player" / "logout", DELETE, headers = generateAuthHeader(player).some)
     _ <- ref.set(None)
   } yield ()
 
@@ -255,7 +253,7 @@ object ClientApp extends IOApp {
   private def listGames(player: AuthPlayer, client: Client[IO]): IO[Unit] =
     for {
       _   <- IO.println("Getting games")
-      res <- makeRequest[Unit, GamesOut](client, uri / "game" / "all", GET, None, generateAuthHeader(player).some)
+      res <- makeRequest[Unit, GamesOut](client, uri / "game" / "all", GET, headers = generateAuthHeader(player).some)
       _ <- res match {
         case Some(value) => IO.println(value.show)
         case None        => IO.unit
