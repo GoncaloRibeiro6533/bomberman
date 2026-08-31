@@ -1,6 +1,7 @@
 package com.evolution.http
 
 import cats.Show
+import cats.data.OptionT
 import cats.effect.*
 import cats.implicits.*
 import com.evolution.game.{Game, GameFinished, GameRunning, GameWaiting}
@@ -125,7 +126,7 @@ object ClientApp extends IOApp {
     } yield ()
   }
 
-  private def printMenu(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]) = {
+  private def printMenu(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] = {
     for {
       option <- menu
       _ <- option match {
@@ -158,7 +159,7 @@ object ClientApp extends IOApp {
       response.bodyText.compile.string.map { bodyString =>
         if (response.status.isSuccess) {
           decode[O](bodyString) match {
-            case Left(_)  => "".asLeft
+            case Left(_)      => "".asLeft
             case Right(value) => value.asRight
           }
         } else bodyString.asLeft
@@ -187,84 +188,69 @@ object ClientApp extends IOApp {
     }
   }
 
-  private def createPlayer(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] =
-    for {
-      _    <- IO.print("Username: ")
-      line <- IO.readLine
-      _ <- Username(line) match {
-        case Some(value) =>
-          for {
-            player <- makeRequest[PlayerInDto, AuthPlayer](
-              client,
-              uri = uri / "player",
-              POST,
-              PlayerInDto(value).some,
-              None
-            )
-            _ <- player match {
-              case Some(value) =>
-                for {
-                  _ <- playerRef.set(Some(value))
-                  _ <- IO.println(s"Logged as ${value.player.username.value}")
-                } yield ()
-              case None => createPlayer(playerRef, client)
-            }
-          } yield ()
-        case None => createPlayer(playerRef, client)
-      }
+  private def createPlayer(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] = {
+    val res: OptionT[IO, Unit] = for {
+      _        <- OptionT.liftF(IO.print("Username: "))
+      line     <- OptionT.liftF(IO.readLine)
+      username <- OptionT.fromOption[IO](Username(line))
+      player <- OptionT(
+        makeRequest[PlayerInDto, AuthPlayer](
+          client,
+          uri = uri / "player",
+          POST,
+          PlayerInDto(username).some,
+          None
+        )
+      )
+      _ <- OptionT.liftF(playerRef.set(Some(player)))
+      _ <- OptionT.liftF(IO.println(s"Logged as ${player.player.username.value}"))
     } yield ()
+    res.value.void
+  }
 
-  private def login(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] =
-    for {
-      _    <- IO.print("Username: ")
-      line <- IO.readLine
-      _ <- Username(line) match {
-        case Some(value) =>
-          for {
-            player <- makeRequest[PlayerInDto, AuthPlayer](
-              client,
-              uri / "player" / "login",
-              POST,
-              PlayerInDto(value).some,
-              None
-            )
-            _ <- player match {
-              case Some(value) =>
-                for {
-                  _ <- playerRef.set(Some(value))
-                  _ <- IO.println(s"Logged as ${value.player.username.value}")
-                } yield ()
-              case None => login(playerRef, client)
-            }
-          } yield ()
-        case None => login(playerRef, client)
-      }
+  private def login(playerRef: Ref[IO, Option[AuthPlayer]], client: Client[IO]): IO[Unit] = {
+    val res: OptionT[IO, Unit] = for {
+      _        <- OptionT.liftF(IO.print("Username: "))
+      line     <- OptionT.liftF(IO.readLine)
+      username <- OptionT.fromOption[IO](Username(line))
+      player <- OptionT(
+        makeRequest[PlayerInDto, AuthPlayer](
+          client,
+          uri / "player" / "login",
+          POST,
+          PlayerInDto(username).some,
+          None
+        )
+      )
+
+      _ <- OptionT.liftF(playerRef.set(Some(player)))
+      _ <- OptionT.liftF(IO.println(s"Logged as ${player.player.username.value}"))
     } yield ()
+    res.value.void
+  }
 
   private def logout(client: Client[IO], player: AuthPlayer, ref: Ref[IO, Option[AuthPlayer]]): IO[Unit] = for {
     _ <- makeRequest[Unit, Unit](client, uri / "player" / "logout", DELETE, None, generateAuthHeader(player).some)
     _ <- ref.set(None)
   } yield ()
 
-  private def createGame(player: AuthPlayer, client: Client[IO]): IO[Unit] =
-    for {
-      _ <- IO.println("Creating game")
-      res <- makeRequest[GameInDto, GameIdDto](
-        client,
-        uri / "game",
-        POST,
-        GameInDto(2).some,
-        generateAuthHeader(player).some
+  private def createGame(player: AuthPlayer, client: Client[IO]): IO[Unit] = {
+    val res = for {
+      _ <- OptionT.liftF(IO.println("Creating game"))
+      res <- OptionT(
+        makeRequest[GameInDto, GameIdDto](
+          client,
+          uri / "game",
+          POST,
+          GameInDto(2).some,
+          generateAuthHeader(player).some
+        )
       )
-      _ <- res match {
-        case Some(value) =>
-          for {
-            _ <- IO.println(value.show)
-            _ <- joinGameRequest(player, value.id.id)
-          } yield ()
-        case None => IO.unit
-      }
+      _ <- OptionT.liftF(IO.println(res.show))
+      _ <- OptionT.liftF(joinGameRequest(player, res.id.id))
     } yield ()
+    res.value.void
+  }
 
   private def listGames(player: AuthPlayer, client: Client[IO]): IO[Unit] =
     for {
@@ -290,7 +276,7 @@ object ClientApp extends IOApp {
       line <- IO.readLine
       _ <- Try(UUID.fromString(line.trim)).toOption match {
         case Some(uuid) => joinGameRequest(player, uuid)
-        case None       => joinGame(player)
+        case None       => IO.unit
       }
     } yield ()
 
