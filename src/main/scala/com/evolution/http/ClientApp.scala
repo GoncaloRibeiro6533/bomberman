@@ -154,19 +154,26 @@ object ClientApp extends IOApp {
   private def handleResponse[O](client: Client[IO], request: Request[IO])(implicit
       entityDecoder: Decoder[O]
   ): IO[Option[O]] = {
-    val res: IO[Option[O]] = client.run(request).use { (response: Response[IO]) =>
+    val res: IO[Either[String, O]] = client.run(request).use { (response: Response[IO]) =>
       response.bodyText.compile.string.map { bodyString =>
-        decode[O](bodyString).toOption
+        if (response.status.isSuccess) {
+          decode[O](bodyString) match {
+            case Left(value)  => "".asLeft
+            case Right(value) => value.asRight
+          }
+        } else bodyString.asLeft
       }
     }
     for {
       content <- res
-      _ <- content match {
-        case None        => IO.unit
-        case Some(value) => IO.pure(Some(value))
+      result <- content match {
+        case Left(value) =>
+          for {
+            _ <- IO.println(value.filterNot(_ == '"'))
+          } yield None
+        case Right(value) => IO.pure(Some(value))
       }
-    } yield ()
-    res
+    } yield result
   }
 
   private def addHeadersAndBody[I](method: Method, uri: Uri, body: Option[I], headers: Option[Headers])(implicit

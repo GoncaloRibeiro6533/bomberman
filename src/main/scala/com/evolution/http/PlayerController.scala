@@ -49,7 +49,7 @@ object PlayerController {
     AuthedRoutes.of[IdlePlayer, F] { case DELETE -> Root / "player" / "logout" as player =>
       for {
         _   <- service.logOut(player)
-        res <- Ok()
+        res <- Ok("Player Logged out")
       } yield res
     }
   }
