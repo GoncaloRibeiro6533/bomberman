@@ -103,7 +103,7 @@ class GameRepositoryInMem[F[_]: Async](
     val res: EitherT[F, GameRepositoryError, Unit] = for {
       matchesMap <- EitherT.right(matches.get)
       deferred   <- EitherT.fromOption(matchesMap.get(gameRunning.id), GameNotFound)
-      _          <- EitherT.right(deferred.complete(gameRunning).void)
+      _          <- EitherT.right(deferred.complete(gameRunning)) // TODO evaluate if it was already completed maybe
     } yield ()
     res.value
   }
