@@ -4,10 +4,8 @@ import cats.Show
 import cats.data.OptionT
 import cats.effect.*
 import cats.implicits.*
-import com.evolution.game.{Game, GameFinished, GameRunning, GameWaiting}
-import com.evolution.game.GameDto.*
-import com.evolution.http.dtos.PlayerDto.PlayerRequest
-import com.evolution.player.{AuthPlayer, PlayerId, Username}
+import com.evolution.game.{Game, GameFinished, GameRequest, GameResponse, GameRunning, GameWaiting, GamesResponse}
+import com.evolution.player.{AuthPlayer, PlayerId, PlayerRequest, Username}
 import com.evolution.util.KeyboardReader
 import io.circe.Decoder
 import io.circe.parser.*
@@ -90,12 +88,12 @@ object ClientApp extends IOApp {
     }
   }
 
-  private implicit val showGameId: Show[GameIdResponse] = Show.show { gameDto =>
+  private implicit val showGameId: Show[GameResponse] = Show.show { gameDto =>
     s"Game id: ${gameDto.id.id}"
   }
 
-  private implicit val showGamesList: Show[GamesOut] = Show.show { gamesOut =>
-    if (gamesOut.games.nonEmpty) gamesOut.games.map(game => game.show).mkString("\n")
+  private implicit val showGamesList: Show[GamesResponse] = Show.show { GamesResponse =>
+    if (GamesResponse.games.nonEmpty) GamesResponse.games.map(game => game.show).mkString("\n")
     else "No games available. Please create a new one."
   }
 
@@ -236,7 +234,7 @@ object ClientApp extends IOApp {
     val res = for {
       _ <- OptionT.liftF(IO.println("Creating game"))
       res <- OptionT(
-        makeRequest[GameRequest, GameIdResponse](
+        makeRequest[GameRequest, GameResponse](
           client,
           uri / "game",
           POST,
@@ -253,7 +251,7 @@ object ClientApp extends IOApp {
   private def listGames(player: AuthPlayer, client: Client[IO]): IO[Unit] =
     for {
       _   <- IO.println("Getting games")
-      res <- makeRequest[Unit, GamesOut](client, uri / "game" / "all", GET, headers = generateAuthHeader(player).some)
+      res <- makeRequest[Unit, GamesResponse](client, uri / "game" / "all", GET, headers = generateAuthHeader(player).some)
       _ <- res match {
         case Some(value) => IO.println(value.show)
         case None        => IO.unit
