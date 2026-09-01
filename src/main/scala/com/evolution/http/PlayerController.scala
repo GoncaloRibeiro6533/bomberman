@@ -3,7 +3,6 @@ package com.evolution.http
 import cats.data.NonEmptyList
 import cats.effect.kernel.Async
 import cats.syntax.all.*
-import com.evolution.http.dtos.PlayerDto.PlayerInDto
 import com.evolution.player.*
 import com.evolution.player.Player.IdlePlayer
 import org.http4s.dsl.Http4sDsl
@@ -21,7 +20,7 @@ object PlayerController {
     HttpRoutes.of[F] {
       case req @ POST -> Root / "player" =>
         for {
-          playerIn <- req.as[PlayerInDto]
+          playerIn <- req.as[PlayerRequest]
           player   <- service.createPlayer(playerIn.username)
           res <- player match {
             case Left(value)  => value.toResponse
@@ -30,7 +29,7 @@ object PlayerController {
         } yield res
       case req @ POST -> Root / "player" / "login" =>
         for {
-          playerIn <- req.as[PlayerInDto]
+          playerIn <- req.as[PlayerRequest]
           player   <- service.login(playerIn.username)
           res <- player match {
             case Left(value)  => value.toResponse
@@ -46,7 +45,7 @@ object PlayerController {
   ): AuthedRoutes[IdlePlayer, F] = {
     val dsl = Http4sDsl[F]
     import dsl.*
-    AuthedRoutes.of[IdlePlayer, F] { case DELETE -> Root / "player" / "logout" as player =>
+    AuthedRoutes.of[IdlePlayer, F] { case POST -> Root / "player" / "logout" as player =>
       for {
         _   <- service.logOut(player)
         res <- Ok("Player Logged out")

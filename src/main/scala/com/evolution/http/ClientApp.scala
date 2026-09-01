@@ -5,8 +5,8 @@ import cats.data.OptionT
 import cats.effect.*
 import cats.implicits.*
 import com.evolution.game.{Game, GameFinished, GameRunning, GameWaiting}
-import com.evolution.http.dtos.GameDto.*
-import com.evolution.http.dtos.PlayerDto.PlayerInDto
+import com.evolution.game.GameDto.*
+import com.evolution.http.dtos.PlayerDto.PlayerRequest
 import com.evolution.player.{AuthPlayer, PlayerId, Username}
 import com.evolution.util.KeyboardReader
 import io.circe.Decoder
@@ -90,7 +90,7 @@ object ClientApp extends IOApp {
     }
   }
 
-  private implicit val showGameId: Show[GameIdDto] = Show.show { gameDto =>
+  private implicit val showGameId: Show[GameIdResponse] = Show.show { gameDto =>
     s"Game id: ${gameDto.id.id}"
   }
 
@@ -194,11 +194,11 @@ object ClientApp extends IOApp {
       line     <- OptionT.liftF(IO.readLine)
       username <- OptionT.fromOption[IO](Username(line))
       player <- OptionT(
-        makeRequest[PlayerInDto, AuthPlayer](
+        makeRequest[PlayerRequest, AuthPlayer](
           client,
           uri = uri / "player",
           POST,
-          PlayerInDto(username).some,
+          PlayerRequest(username).some,
         )
       )
       _ <- OptionT.liftF(playerRef.set(Some(player)))
@@ -213,11 +213,11 @@ object ClientApp extends IOApp {
       line     <- OptionT.liftF(IO.readLine)
       username <- OptionT.fromOption[IO](Username(line))
       player <- OptionT(
-        makeRequest[PlayerInDto, AuthPlayer](
+        makeRequest[PlayerRequest, AuthPlayer](
           client,
           uri / "player" / "login",
           POST,
-          PlayerInDto(username).some,
+          PlayerRequest(username).some,
         )
       )
 
@@ -228,7 +228,7 @@ object ClientApp extends IOApp {
   }
 
   private def logout(client: Client[IO], player: AuthPlayer, ref: Ref[IO, Option[AuthPlayer]]): IO[Unit] = for {
-    _ <- makeRequest[Unit, Unit](client, uri / "player" / "logout", DELETE, headers = generateAuthHeader(player).some)
+    _ <- makeRequest[Unit, Unit](client, uri / "player" / "logout", POST, headers = generateAuthHeader(player).some)
     _ <- ref.set(None)
   } yield ()
 
@@ -236,11 +236,11 @@ object ClientApp extends IOApp {
     val res = for {
       _ <- OptionT.liftF(IO.println("Creating game"))
       res <- OptionT(
-        makeRequest[GameInDto, GameIdDto](
+        makeRequest[GameRequest, GameIdResponse](
           client,
           uri / "game",
           POST,
-          GameInDto(2).some,
+          GameRequest(2).some,
           generateAuthHeader(player).some
         )
       )

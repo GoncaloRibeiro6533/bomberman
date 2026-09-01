@@ -5,8 +5,7 @@ import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
 import com.evolution.command.Command
-import com.evolution.game.{GameId, GameService, GameRepositoryError}
-import com.evolution.http.dtos.GameDto.{GameIdDto, GameInDto, GamesOut}
+import com.evolution.game.{GameId, GameRepositoryError, GameRequest, GameResponse, GameService, GamesResponse}
 import com.evolution.player.Player.IdlePlayer
 import io.circe.parser.*
 import io.circe.syntax.EncoderOps
@@ -45,11 +44,11 @@ object GameController {
       case GET -> Root / "game" / "all" as _ =>
         for {
           games    <- service.getAllGames
-          response <- Ok(GamesOut(games.map(game => GameIdDto(game.id))))
+          response <- Ok(GamesResponse(games.map(game => GameResponse(game.id))))
         } yield response
       case req @ POST -> Root / "game" as player =>
         for {
-          gameIn <- req.req.as[GameInDto]
+          gameIn <- req.req.as[GameRequest]
           positiveNumber = PositiveNumber.fromInt(gameIn.nPlayers)
           response <- positiveNumber match {
             case Some(value) =>
@@ -61,7 +60,7 @@ object GameController {
           }
           res <- response
         } yield res
-      case GET -> Root / "game" / UUIDVar(gameId) / "join" as player =>
+      case GET -> Root / "game" / UUIDVar(gameId) / "join"  as player => /// TODO  UUIDVar(playerId) =>
         for {
           game <- service.joinGame(GameId(gameId), player)
           response <- game match {
