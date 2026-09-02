@@ -61,7 +61,7 @@ object GameController {
           }
           res <- response
         } yield res
-      case GET -> Root / "game" / UUIDVar(gameId) / "join"  as player => /// TODO  UUIDVar(playerId) =>
+      case GET -> Root / "game" / UUIDVar(gameId) / "join" as player => /// TODO  UUIDVar(playerId) =>
         for {
           game <- service.joinGame(GameId(gameId), player)
           response <- game match {
@@ -92,8 +92,8 @@ object GameController {
         case GameRepositoryError.GameNotFound        => NotFound("Game not found")
         case GameRepositoryError.GameAlreadyFinished => Conflict("Game already finished")
         case GameRepositoryError.GameAlreadyRunning  => Conflict("Game already started")
-        case PlayerAlreadyInGame => Conflict("Player already in game")
-        case GameAlreadyFull => Conflict("Game is already full")
+        case PlayerAlreadyInGame                     => Conflict("Player already in game")
+        case GameAlreadyFull                         => Conflict("Game is already full")
       }
     }
   }

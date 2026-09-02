@@ -1,6 +1,5 @@
 package com.evolution.game
 
-import cats.implicits.{catsSyntaxEitherId, catsSyntaxOptionId}
 import com.evolution.bomb.{Bomb, BombCount, BombId}
 import com.evolution.cell.*
 import com.evolution.cell.CellType.*
@@ -106,7 +105,7 @@ final case class GameRunning(
     val elapsed: Duration          = Duration.between(startedAt, now)
     val newRemainingTime: Duration = duration.minus(elapsed)
     if (activePlayers.isEmpty || newRemainingTime.isNegative || newRemainingTime.isZero) { // print at least once the empty board
-      finish(activePlayers, deadPlayers).asLeft
+      scala.Left(finish(activePlayers, deadPlayers))
     } else {
       if (bombsToDetonate.nonEmpty) {
         val bombsWithAffectedCells: Map[Bomb, List[Cell]] =
@@ -118,14 +117,16 @@ final case class GameRunning(
         val (newDeadPlayers, newActivePlayers) =
           getPlayersWithScoreUpdated(activePlayers, deadPlayers, killedPlayers, bombsToDetonate)
         val remainingBombs = bombs.filterNot(bombsToDetonate.contains(_))
-        copy(
-          activePlayers = newActivePlayers,
-          deadPlayers = newDeadPlayers,
-          blocks = remainingBlocks,
-          bombs = remainingBombs,
-          remainingTime = newRemainingTime
-        ).asRight
-      } else copy(remainingTime = newRemainingTime).asRight
+        scala.Right(
+          copy(
+            activePlayers = newActivePlayers,
+            deadPlayers = newDeadPlayers,
+            blocks = remainingBlocks,
+            bombs = remainingBombs,
+            remainingTime = newRemainingTime
+          )
+        )
+      } else scala.Right(copy(remainingTime = newRemainingTime))
     }
   }
 
@@ -211,10 +212,10 @@ final case class GameRunning(
         activePlayers.find(_.id == killer) match {
           case Some(activePlayer) =>
             val totalPoints = activePlayer.score + points
-            activePlayer.copy(score = totalPoints).some
+            Some(activePlayer.copy(score = totalPoints))
           case None =>
             deadPlayers.find(_.id == killer) match {
-              case Some(deadPlayer) => deadPlayer.copy(score = deadPlayer.score + points).some
+              case Some(deadPlayer) => Some(deadPlayer.copy(score = deadPlayer.score + points))
               case None             => None
             }
         }
