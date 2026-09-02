@@ -5,6 +5,7 @@ import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
 import com.evolution.command.Command
+import com.evolution.game.GameRepositoryError.{GameAlreadyFull, PlayerAlreadyInGame}
 import com.evolution.game.{GameId, GameRepositoryError, GameRequest, GameResponse, GameService, GamesResponse}
 import com.evolution.player.Player.IdlePlayer
 import io.circe.parser.*
@@ -46,14 +47,14 @@ object GameController {
           games    <- service.getAllGames
           response <- Ok(GamesResponse(games.map(game => GameResponse(game.id))))
         } yield response
-      case req @ POST -> Root / "game" as player =>
+      case req @ POST -> Root / "game" as _ =>
         for {
           gameIn <- req.req.as[GameRequest]
           positiveNumber = PositiveNumber.fromInt(gameIn.nPlayers)
           response <- positiveNumber match {
             case Some(value) =>
               for {
-                game <- service.createGame(value, player)
+                game <- service.createGame(value)
                 gameResponse = Created(game)
               } yield gameResponse
             case None => Async[F].pure(BadRequest("Invalid number of players"))
@@ -64,12 +65,12 @@ object GameController {
         for {
           game <- service.joinGame(GameId(gameId), player)
           response <- game match {
-            case Right(value) =>
+            case Right((topic, queue)) =>
               wsb.build(
                 receive = _.evalMap { frame =>
-                  handleFrame[F](frame, value.queue)
+                  handleFrame[F](frame, queue)
                 },
-                send = value.topic
+                send = topic
                   .subscribe(maxQueued = 10)
                   .map(game => WebSocketFrame.Text(game.asJson.noSpaces))
               )
@@ -91,6 +92,8 @@ object GameController {
         case GameRepositoryError.GameNotFound        => NotFound("Game not found")
         case GameRepositoryError.GameAlreadyFinished => Conflict("Game already finished")
         case GameRepositoryError.GameAlreadyRunning  => Conflict("Game already started")
+        case PlayerAlreadyInGame => Conflict("Player already in game")
+        case GameAlreadyFull => Conflict("Game is already full")
       }
     }
   }

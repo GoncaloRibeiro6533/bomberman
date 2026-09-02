@@ -1,6 +1,5 @@
 package com.evolution.game
 
-import cats.data.EitherT
 import cats.effect.*
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
@@ -11,9 +10,8 @@ import com.evolution.util.IdGenerator
 import java.time.Instant
 
 class GameRepositoryInMem[F[_]: Async](
-    private val games: Ref[F, Map[GameId, Game]],
-    private val loops: Ref[F, Map[GameId, (GameLoop[F], F[Unit])]],
-    private val matches: Ref[F, Map[GameId, Deferred[F, GameRunning]]]
+                                        private val games: Ref[F, Map[GameId, Game]],
+                                        private val loops: Ref[F, Map[GameId, (GameActor[F], F[Unit])]],
 ) extends GameRepository[F] {
 
   override def findGame(gameId: GameId): F[Option[Game]] =
@@ -23,7 +21,6 @@ class GameRepositoryInMem[F[_]: Async](
 
   override def insertGame(
       nPlayers: PositiveNumber,
-      player: IdlePlayer
   ): F[GameWaiting] = for {
     uuid <- IdGenerator.generateUUID[F]
     gameId = GameId(uuid)
@@ -38,13 +35,13 @@ class GameRepositoryInMem[F[_]: Async](
     _ <- games.update(_.updated(game.id, game))
   } yield ()
 
-  override def insertGameLoop(gameWaiting: GameWaiting, loop: (GameLoop[F], F[Unit])): F[GameLoop[F]] = loops.modify {
-    (previousLoops: Map[GameId, (GameLoop[F], F[Unit])]) =>
+  override def insertGameLoop(gameId: GameId, loop: (GameActor[F], F[Unit])): F[GameActor[F]] = loops.modify {
+    (previousLoops: Map[GameId, (GameActor[F], F[Unit])]) =>
       {
-        val game = previousLoops.get(gameWaiting.id)
+        val game = previousLoops.get(gameId)
         game match {
           case Some(value) => (previousLoops, value._1)
-          case None        => (previousLoops.updated(gameWaiting.id, loop), loop._1)
+          case None        => (previousLoops.updated(gameId, loop), loop._1)
         }
       }
   }
@@ -75,9 +72,6 @@ class GameRepositoryInMem[F[_]: Async](
       }
     }
 
-  override def insertFutureGameRunning(gameId: GameId, gameRunning: Deferred[F, GameRunning]): F[Unit] =
-    matches.update(_.updated(gameId, gameRunning))
-
   override def addPlayerToGame(gameId: GameId, player: IdlePlayer): F[Either[GameRepositoryError, GameWaiting]] =
     games.modify { currentGames =>
       currentGames.get(gameId) match {
@@ -100,15 +94,16 @@ class GameRepositoryInMem[F[_]: Async](
     }
 
   override def completeGameRunning(gameRunning: GameRunning): F[Either[GameRepositoryError, Unit]] = {
-    val res: EitherT[F, GameRepositoryError, Unit] = for {
-      matchesMap <- EitherT.right(matches.get)
-      deferred   <- EitherT.fromOption(matchesMap.get(gameRunning.id), GameNotFound)
-      _          <- EitherT.right(deferred.complete(gameRunning)) // TODO evaluate if it was already completed maybe
-    } yield ()
-    res.value
+//    val res: EitherT[F, GameRepositoryError, Unit] = for {
+//      matchesMap <- EitherT.right(matches.get)
+//      deferred   <- EitherT.fromOption(matchesMap.get(gameRunning.id), GameNotFound)
+//      _          <- EitherT.right(deferred.complete(gameRunning)) // TODO evaluate if it was already completed maybe
+//    } yield ()
+//    res.value
+    ???
   }
 
-  override def getGameLoop(gameId: GameId): F[Either[GameRepositoryError, GameLoop[F]]] =
+  override def getGameLoop(gameId: GameId): F[Either[GameRepositoryError, GameActor[F]]] =
     loops.get.map(_.get(gameId) match {
       case Some(value) => value._1.asRight
       case None        => GameNotFound.asLeft
@@ -117,13 +112,13 @@ class GameRepositoryInMem[F[_]: Async](
 
 object GameRepositoryInMem {
   def make[F[_]: Async]: Resource[F, GameRepositoryInMem[F]] = for {
-    loops: Ref[F, Map[GameId, (GameLoop[F], F[Unit])]] <-
+    loops: Ref[F, Map[GameId, (GameActor[F], F[Unit])]] <-
       Resource.make(
-        Ref.of[F, Map[GameId, (GameLoop[F], F[Unit])]](Map.empty)
+        Ref.of[F, Map[GameId, (GameActor[F], F[Unit])]](Map.empty)
       ) { stateRef =>
         for {
           _                                          <- Async[F].delay(println("Releasing games"))
-          state: Map[GameId, (GameLoop[F], F[Unit])] <- stateRef.get
+          state: Map[GameId, (GameActor[F], F[Unit])] <- stateRef.get
           _ <- state.toVector.traverse { case (gameId, (_, release)) =>
             for {
               _ <- Async[F].delay(println(s"Stopping game $gameId"))
@@ -133,6 +128,5 @@ object GameRepositoryInMem {
         } yield ()
       }
     games   <- Resource.eval(Ref[F].of(Map.empty[GameId, Game]))
-    matches <- Resource.eval(Ref[F].of(Map.empty[GameId, Deferred[F, GameRunning]]))
-  } yield new GameRepositoryInMem[F](games, loops, matches)
+  } yield new GameRepositoryInMem[F](games, loops)
 }
