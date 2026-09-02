@@ -4,7 +4,7 @@ import cats.Show
 import cats.data.OptionT
 import cats.effect.*
 import cats.implicits.*
-import com.evolution.game.{Game, GameFinished, GameRequest, GameResponse, GameRunning, GameWaiting, GamesResponse}
+import com.evolution.game.*
 import com.evolution.player.{AuthPlayer, PlayerId, PlayerRequest, Username}
 import com.evolution.util.KeyboardReader
 import io.circe.Decoder
@@ -15,14 +15,16 @@ import org.http4s.Credentials.Token
 import org.http4s.Method.{DELETE, GET, POST}
 import org.http4s.client.Client
 import org.http4s.client.dsl.io.*
-import org.http4s.client.websocket.{WSConnectionHighLevel, WSFrame, WSRequest}
+import org.http4s.client.websocket.{WSConnection, WSFrame, WSRequest}
 import org.http4s.ember.client.*
 import org.http4s.headers.Authorization
 import org.http4s.implicits.*
 import org.http4s.jdkhttpclient.JdkWSClient
+import scodec.bits.ByteVector
 
 import java.net.http.HttpClient
 import java.util.UUID
+import scala.concurrent.duration.DurationInt
 import scala.util.Try
 
 object ClientApp extends IOApp {
@@ -63,7 +65,7 @@ object ClientApp extends IOApp {
     }
   } yield num
 
-  private def sendCommand(client: WSConnectionHighLevel[IO], playerId: PlayerId): IO[Unit] =
+  private def sendCommand(client: WSConnection[IO], playerId: PlayerId): IO[Unit] =
     for {
       cmd <- KeyboardReader.readCommand[IO](playerId)
       _ = playerId
@@ -142,7 +144,7 @@ object ClientApp extends IOApp {
       uri: Uri,
       method: Method,
       body: Option[I] = None,
-      headers: Option[Headers] = None,
+      headers: Option[Headers] = None
   )(implicit entityEncoder: EntityEncoder[IO, I], entityDecoder: Decoder[O]): IO[Option[O]] = method match {
     case GET    => handleResponse[O](client, addHeadersAndBody[I](GET, uri, body, headers))
     case POST   => handleResponse[O](client, addHeadersAndBody[I](POST, uri, body, headers))
@@ -196,7 +198,7 @@ object ClientApp extends IOApp {
           client,
           uri = uri / "player",
           POST,
-          PlayerRequest(username).some,
+          PlayerRequest(username).some
         )
       )
       _ <- OptionT.liftF(playerRef.set(Some(player)))
@@ -215,7 +217,7 @@ object ClientApp extends IOApp {
           client,
           uri / "player" / "login",
           POST,
-          PlayerRequest(username).some,
+          PlayerRequest(username).some
         )
       )
 
@@ -250,8 +252,13 @@ object ClientApp extends IOApp {
 
   private def listGames(player: AuthPlayer, client: Client[IO]): IO[Unit] =
     for {
-      _   <- IO.println("Getting games")
-      res <- makeRequest[Unit, GamesResponse](client, uri / "game" / "all", GET, headers = generateAuthHeader(player).some)
+      _ <- IO.println("Getting games")
+      res <- makeRequest[Unit, GamesResponse](
+        client,
+        uri / "game" / "all",
+        GET,
+        headers = generateAuthHeader(player).some
+      )
       _ <- res match {
         case Some(value) => IO.println(value.show)
         case None        => IO.unit
@@ -276,17 +283,25 @@ object ClientApp extends IOApp {
       }
     } yield ()
 
+  private def sendPing(client: WSConnection[IO], playerId: PlayerId): IO[Unit] =
+    for {
+      _ <- client.send(WSFrame.Ping(ByteVector.fromUUID(playerId.value)))
+      _ <- IO.sleep(1.second)
+      _ <- sendPing(client, playerId)
+    } yield ()
+
   private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
     for {
       _ <- IO.println(s"Joining Game ${gameId.show} ")
       joinUri = uri / "game" / gameId / "join"
       headers = generateAuthHeader(player)
-      clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
+      clientResource: Resource[IO, WSConnection[IO]] =
         Resource
           .eval(IO(HttpClient.newHttpClient()))
-          .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
+          .flatMap(JdkWSClient[IO](_).connect(WSRequest(uri = joinUri, headers = headers, method = GET)))
       _ <- clientResource.use { client =>
         for {
+          pingWorker <- sendPing(client, player.player.id).start
           cmdReader <- sendCommand(client, player.player.id).start
           _ <- client.receiveStream
             .collect { case WSFrame.Text(json, _) => decode[Game](json) }
@@ -306,6 +321,7 @@ object ClientApp extends IOApp {
             .compile
             .drain
           _ <- cmdReader.cancel
+          _ <- pingWorker.cancel
         } yield ()
       }
     } yield ()
