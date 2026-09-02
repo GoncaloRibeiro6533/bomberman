@@ -10,8 +10,8 @@ import com.evolution.util.IdGenerator
 import java.time.Instant
 
 class GameRepositoryInMem[F[_]: Async](
-                                        private val games: Ref[F, Map[GameId, Game]],
-                                        private val loops: Ref[F, Map[GameId, (GameActor[F], F[Unit])]],
+    private val games: Ref[F, Map[GameId, Game]],
+    private val loops: Ref[F, Map[GameId, (GameActor[F], F[Unit])]]
 ) extends GameRepository[F] {
 
   override def findGame(gameId: GameId): F[Option[Game]] =
@@ -20,7 +20,7 @@ class GameRepositoryInMem[F[_]: Async](
   override def findAll(): F[List[Game]] = games.get.map(_.values.toList)
 
   override def insertGame(
-      nPlayers: PositiveNumber,
+      nPlayers: PositiveNumber
   ): F[GameWaiting] = for {
     uuid <- IdGenerator.generateUUID[F]
     gameId = GameId(uuid)
@@ -93,16 +93,6 @@ class GameRepositoryInMem[F[_]: Async](
       }
     }
 
-  override def completeGameRunning(gameRunning: GameRunning): F[Either[GameRepositoryError, Unit]] = {
-//    val res: EitherT[F, GameRepositoryError, Unit] = for {
-//      matchesMap <- EitherT.right(matches.get)
-//      deferred   <- EitherT.fromOption(matchesMap.get(gameRunning.id), GameNotFound)
-//      _          <- EitherT.right(deferred.complete(gameRunning)) // TODO evaluate if it was already completed maybe
-//    } yield ()
-//    res.value
-    ???
-  }
-
   override def getGameLoop(gameId: GameId): F[Either[GameRepositoryError, GameActor[F]]] =
     loops.get.map(_.get(gameId) match {
       case Some(value) => value._1.asRight
@@ -117,7 +107,7 @@ object GameRepositoryInMem {
         Ref.of[F, Map[GameId, (GameActor[F], F[Unit])]](Map.empty)
       ) { stateRef =>
         for {
-          _                                          <- Async[F].delay(println("Releasing games"))
+          _                                           <- Async[F].delay(println("Releasing games"))
           state: Map[GameId, (GameActor[F], F[Unit])] <- stateRef.get
           _ <- state.toVector.traverse { case (gameId, (_, release)) =>
             for {
@@ -127,6 +117,6 @@ object GameRepositoryInMem {
           }
         } yield ()
       }
-    games   <- Resource.eval(Ref[F].of(Map.empty[GameId, Game]))
+    games <- Resource.eval(Ref[F].of(Map.empty[GameId, Game]))
   } yield new GameRepositoryInMem[F](games, loops)
 }
