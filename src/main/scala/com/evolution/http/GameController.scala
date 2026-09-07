@@ -1,44 +1,22 @@
 package com.evolution.http
 
 import cats.effect.kernel.Async
-import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
-import com.evolution.command.Command
 import com.evolution.game.GameRepositoryError.{GameAlreadyFull, PlayerAlreadyInGame}
-import com.evolution.game.{GameId, GameRepositoryError, GameRequest, GameResponse, GameService, GamesResponse}
+import com.evolution.game.*
 import com.evolution.player.Player.IdlePlayer
-import io.circe.parser.*
-import io.circe.syntax.EncoderOps
+import com.evolution.player.{PlayerId, PlayerService}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.server.websocket.WebSocketBuilder2
-import org.http4s.websocket.WebSocketFrame
-import org.http4s.{AuthedRoutes, Response}
+import org.http4s.{AuthedRoutes, HttpRoutes, Response}
 
 object GameController {
   import org.http4s.circe.CirceEntityCodec.*
 
-  private def parseCommand(json: String): Option[Command] = {
-    decode[Command](json) match {
-      case Left(_)      => None
-      case Right(value) => value.some
-    }
-  }
-
-  private def handleFrame[F[_]: Async](frame: WebSocketFrame, queue: Queue[F, Command]): F[Unit] =
-    frame match {
-      case WebSocketFrame.Text(text, _) =>
-        parseCommand(text) match {
-          case Some(value) => queue.offer(value)
-          case None        => Async[F].unit
-        }
-      case WebSocketFrame.Close(_) => Async[F].unit // TODO remove player
-      case _                       => Async[F].unit
-    }
-
-  def gameRoute[F[_]: Async](
+  def gameRouteWithAuth[F[_]: Async](
       service: GameService[F]
-  )(wsb: WebSocketBuilder2[F]): AuthedRoutes[IdlePlayer, F] = {
+  ): AuthedRoutes[IdlePlayer, F] = {
     val dsl = Http4sDsl[F]
     import dsl.*
     AuthedRoutes.of[IdlePlayer, F] {
@@ -61,22 +39,38 @@ object GameController {
           }
           res <- response
         } yield res
-      case GET -> Root / "game" / UUIDVar(gameId) / "join" as player => /// TODO  UUIDVar(playerId) =>
-        for {
-          game <- service.joinGame(GameId(gameId), player)
-          response <- game match {
-            case Right((topic, queue)) =>
-              wsb.build(
-                receive = _.evalMap { frame =>
-                  handleFrame[F](frame, queue)
-                },
-                send = topic
-                  .subscribe(maxQueued = 10)
-                  .map(game => WebSocketFrame.Text(game.asJson.noSpaces))
-              )
-            case Left(value) => value.toResponse
+    }
+  }
+
+  def gameRoutes[F[_]: Async](
+      playerService: PlayerService[F],
+      gameService: GameService[F],
+      websocketService: WebsocketService[F]
+  )(wsb: WebSocketBuilder2[F]): HttpRoutes[F] = {
+    val dsl = Http4sDsl[F]
+    import dsl.*
+    HttpRoutes.of[F] { case GET -> Root / "game" / UUIDVar(gameId) / "join" / UUIDVar(playerId) =>
+      for {
+        response <- websocketService.connect[Command](
+          PlayerId(playerId),
+          wsb,
+          onMessage = { cmd =>
+            for {
+              commandRes <- gameService.sendCommand(GameId(gameId), cmd)
+              _ <- commandRes match {
+                case Left(value) => websocketService.disconnect(PlayerId(playerId), value.message)
+                case Right(_)    => Async[F].unit
+              }
+            } yield ()
           }
-        } yield response
+        )
+        player <- playerService.getPlayer(PlayerId(playerId))
+        _ <- player match {
+          case Some(value) => gameService.sendCommand(GameId(gameId), Command.Join(value))
+          case None        => Async[F].unit
+        }
+      } yield response
+
     }
   }
 
@@ -89,11 +83,11 @@ object GameController {
       val dsl = Http4sDsl[F]
       import dsl.*
       error match {
-        case GameRepositoryError.GameNotFound        => NotFound("Game not found")
-        case GameRepositoryError.GameAlreadyFinished => Conflict("Game already finished")
-        case GameRepositoryError.GameAlreadyRunning  => Conflict("Game already started")
-        case PlayerAlreadyInGame                     => Conflict("Player already in game")
-        case GameAlreadyFull                         => Conflict("Game is already full")
+        case GameRepositoryError.GameNotFound(message)        => NotFound(message)
+        case GameRepositoryError.GameAlreadyFinished(message) => Conflict(message)
+        case GameRepositoryError.GameAlreadyRunning(message)  => Conflict(message)
+        case PlayerAlreadyInGame(message)                     => Conflict(message)
+        case GameAlreadyFull(message)                         => Conflict(message)
       }
     }
   }

@@ -2,35 +2,38 @@ package com.evolution.http
 
 import cats.data.{Kleisli, OptionT}
 import cats.effect.*
+import cats.effect.std.Queue
 import cats.implicits.toSemigroupKOps
 import com.comcast.ip4s.*
-import com.evolution.game.{GameRepositoryInMem, GameService}
+import com.evolution.game.{GameRepositoryInMem, GameService, WebsocketService, WebsocketServiceImpl}
 import com.evolution.player.Player.IdlePlayer
-import com.evolution.player.{PlayerId, PlayerRepositoryError, PlayerRepositoryInMem, PlayerService, Token}
-import org.http4s.{AuthedRoutes, HttpApp, HttpRoutes, Response, Status}
+import com.evolution.player.*
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.AuthMiddleware
 import org.http4s.server.middleware.ErrorHandling
 import org.http4s.server.websocket.WebSocketBuilder2
+import org.http4s.websocket.WebSocketFrame
+import org.http4s.{AuthedRoutes, HttpApp, HttpRoutes, Response, Status}
 
 object Server extends IOApp {
 
   private def httpApp(
       gameService: GameService[IO],
-      playerService: PlayerService[IO]
+      playerService: PlayerService[IO],
+      websocketService: WebsocketService[IO]
   ): IO[WebSocketBuilder2[IO] => HttpApp[IO]] =
     IO.pure { wsb =>
       ErrorHandling {
         Seq(
           PlayerController.playerRoute(playerService),
-          authedKleisli(playerService, gameService, wsb)
+          GameController.gameRoutes[IO](playerService, gameService, websocketService)(wsb),
+          authedKleisli(playerService, gameService)
         ).reduce(_ <+> _)
       }.orNotFound
     }
 
-  private val gameRoutes: (GameService[IO], WebSocketBuilder2[IO]) => AuthedRoutes[IdlePlayer, IO] = {
-    (gameService, wsb) =>
-      GameController.gameRoute(gameService)(wsb)
+  private val gameRoutes: GameService[IO] => AuthedRoutes[IdlePlayer, IO] = { gameService =>
+    GameController.gameRouteWithAuth(gameService)
   }
 
   private val playerAuthedRoutes: PlayerService[IO] => AuthedRoutes[IdlePlayer, IO] = { playerService =>
@@ -45,34 +48,35 @@ object Server extends IOApp {
     AuthMiddleware(MyAuthMiddleware.authPlayerEither(service), onFailure)
   }
 
-  private val authedKleisli: (PlayerService[IO], GameService[IO], WebSocketBuilder2[IO]) => HttpRoutes[IO] = {
+  private val authedKleisli: (PlayerService[IO], GameService[IO]) => HttpRoutes[IO] = {
     (
         playerService: PlayerService[IO],
-        gameService: GameService[IO],
-        wsb: WebSocketBuilder2[IO]
+        gameService: GameService[IO]
     ) =>
       val middleware = authMiddleware(playerService)
-      val authRoutes = Seq(gameRoutes(gameService, wsb), playerAuthedRoutes(playerService)).reduce(_ <+> _)
+      val authRoutes = Seq(gameRoutes(gameService), playerAuthedRoutes(playerService)).reduce(_ <+> _)
       middleware(authRoutes)
   }
 
   override def run(args: List[String]): IO[ExitCode] = {
     GameRepositoryInMem.make[IO].use { repo =>
       for {
-        players <- Ref[IO].of(Map[PlayerId, IdlePlayer]())
-        tokens  <- Ref[IO].of(Map[PlayerId, Token]())
-        clock         = Clock[IO]
-        playerRepo    = new PlayerRepositoryInMem[IO](players, tokens)
-        playerService = new PlayerService[IO](playerRepo, clock)
-        gameService   = new GameService[IO](repo, clock)
-        app <- httpApp(gameService, playerService)
+        players     <- Ref[IO].of(Map[PlayerId, IdlePlayer]().empty)
+        tokens      <- Ref[IO].of(Map[PlayerId, Token]().empty)
+        connections <- Ref[IO].of(Map[PlayerId, Queue[IO, WebSocketFrame]]().empty)
+        websocketService = new WebsocketServiceImpl[IO](connections)
+        playerRepo       = new PlayerRepositoryInMem[IO](players, tokens)
+        playerService    = new PlayerService[IO](playerRepo)
+        gameService      = new GameService[IO](repo, websocketService)
+        app <- httpApp(gameService, playerService, websocketService)
         exitCode <- EmberServerBuilder
           .default[IO]
           .withHost(ipv4"127.0.0.1")
           .withPort(port"9001")
           .withHttpWebSocketApp(wsb => app(wsb))
           .build
-          .useForever
+          .use(_ => IO.never)
+          .as(ExitCode.Success)
       } yield exitCode
     }
   }

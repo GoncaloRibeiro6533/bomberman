@@ -79,7 +79,7 @@ class PlayerRepositoryInMem[F[_]: Async](
 
   override def findByToken(value: TokenInfo): F[Either[PlayerRepositoryError, IdlePlayer]] = {
     val res = for {
-      token: Token <- EitherT.fromOptionF[F, PlayerRepositoryError, Token](findToken(value), TokenNotFound)
+      token  <- EitherT.fromOptionF[F, PlayerRepositoryError, Token](findToken(value), TokenNotFound)
       player <- EitherT.fromOptionF[F, PlayerRepositoryError, IdlePlayer](findPlayer(token.playerId), PlayerNotFound)
     } yield player
     res.value

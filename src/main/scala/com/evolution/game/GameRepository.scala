@@ -1,9 +1,6 @@
 package com.evolution.game
 
 import com.evolution.cell.PositiveNumber
-import com.evolution.player.Player.IdlePlayer
-
-import java.time.Instant
 
 trait GameRepository[F[_]] {
   def findGame(gameId: GameId): F[Option[Game]]
@@ -15,17 +12,17 @@ trait GameRepository[F[_]] {
   def update(game: Game): F[Unit]
   def insertGameLoop(gameId: GameId, loop: (GameActor[F], F[Unit])): F[GameActor[F]]
   def stopGameLoop(gameFinished: GameFinished): F[Unit]
-  def promoteGameToRunning(gameId: GameId, startedAt: Instant): F[Either[GameRepositoryError, GameRunning]]
-  def addPlayerToGame(gameId: GameId, player: IdlePlayer): F[Either[GameRepositoryError, GameWaiting]]
   def getGameLoop(gameId: GameId): F[Either[GameRepositoryError, GameActor[F]]]
 }
 
-sealed trait GameRepositoryError
+sealed trait GameRepositoryError {
+  def message: String
+}
 
 object GameRepositoryError {
-  object GameNotFound        extends GameRepositoryError
-  object GameAlreadyRunning  extends GameRepositoryError
-  object GameAlreadyFinished extends GameRepositoryError
-  object GameAlreadyFull     extends GameRepositoryError
-  object PlayerAlreadyInGame extends GameRepositoryError
+  case class GameNotFound(message: String = "Game not found")                extends GameRepositoryError
+  case class GameAlreadyRunning(message: String = "Game already Running")    extends GameRepositoryError
+  case class GameAlreadyFinished(message: String = "Game already finished")  extends GameRepositoryError
+  case class GameAlreadyFull(message: String = "Game already full")          extends GameRepositoryError
+  case class PlayerAlreadyInGame(message: String = "Player already in game") extends GameRepositoryError
 }

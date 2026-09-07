@@ -4,10 +4,7 @@ import cats.effect.*
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
 import com.evolution.game.GameRepositoryError.*
-import com.evolution.player.Player.IdlePlayer
 import com.evolution.util.IdGenerator
-
-import java.time.Instant
 
 class GameRepositoryInMem[F[_]: Async](
     private val games: Ref[F, Map[GameId, Game]],
@@ -24,7 +21,7 @@ class GameRepositoryInMem[F[_]: Async](
   ): F[GameWaiting] = for {
     uuid <- IdGenerator.generateUUID[F]
     gameId = GameId(uuid)
-    game   = GameWaiting(gameId, nPlayers = nPlayers, players = Nil)
+    game   = GameWaiting(gameId, nPlayers = nPlayers, players = Set.empty)
     _ <- games.update(_.updated(gameId, game))
   } yield game
 
@@ -56,59 +53,22 @@ class GameRepositoryInMem[F[_]: Async](
     _ <- release.sequence_
   } yield ()
 
-  override def promoteGameToRunning(gameId: GameId, startedAt: Instant): F[Either[GameRepositoryError, GameRunning]] =
-    games.modify { gamesMap =>
-      val game: Option[Game] = gamesMap.get(gameId)
-      game match {
-        case Some(value) =>
-          value match {
-            case game: GameWaiting =>
-              val gameRunning = game.start(startedAt)
-              (gamesMap.updated(game.id, gameRunning), gameRunning.asRight)
-            case _: GameRunning  => (gamesMap, GameAlreadyRunning.asLeft)
-            case _: GameFinished => (gamesMap, GameAlreadyFinished.asLeft)
-          }
-        case None => (gamesMap, GameRepositoryError.GameNotFound.asLeft)
-      }
-    }
-
-  override def addPlayerToGame(gameId: GameId, player: IdlePlayer): F[Either[GameRepositoryError, GameWaiting]] =
-    games.modify { currentGames =>
-      currentGames.get(gameId) match {
-        case Some(value) =>
-          value match {
-            case gameWaiting: GameWaiting =>
-              if (
-                gameWaiting.players.size == gameWaiting.nPlayers.value
-                && !gameWaiting.players.exists(_.id == player.id)
-              ) (currentGames, GameAlreadyRunning.asLeft)
-              else {
-                val newGame = gameWaiting.copy(players = player.toJoiningPlayer +: gameWaiting.players)
-                (currentGames.updated(gameId, newGame), newGame.asRight)
-              }
-            case _: GameRunning  => (currentGames, GameAlreadyRunning.asLeft)
-            case _: GameFinished => (currentGames, GameAlreadyFinished.asLeft)
-          }
-        case None => (currentGames, GameNotFound.asLeft)
-      }
-    }
-
   override def getGameLoop(gameId: GameId): F[Either[GameRepositoryError, GameActor[F]]] =
     loops.get.map(_.get(gameId) match {
       case Some(value) => value._1.asRight
-      case None        => GameNotFound.asLeft
+      case None        => GameNotFound().asLeft
     })
 }
 
 object GameRepositoryInMem {
   def make[F[_]: Async]: Resource[F, GameRepositoryInMem[F]] = for {
-    loops: Ref[F, Map[GameId, (GameActor[F], F[Unit])]] <-
+    loops <-
       Resource.make(
         Ref.of[F, Map[GameId, (GameActor[F], F[Unit])]](Map.empty)
       ) { stateRef =>
         for {
-          _                                           <- Async[F].delay(println("Releasing games"))
-          state: Map[GameId, (GameActor[F], F[Unit])] <- stateRef.get
+          _     <- Async[F].delay(println("Releasing games"))
+          state <- stateRef.get
           _ <- state.toVector.traverse { case (gameId, (_, release)) =>
             for {
               _ <- Async[F].delay(println(s"Stopping game $gameId"))

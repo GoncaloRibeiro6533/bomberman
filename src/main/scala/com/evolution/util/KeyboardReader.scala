@@ -3,9 +3,9 @@ package com.evolution.util
 import cats.Monad
 import cats.effect.std.Console
 import cats.implicits.*
-import com.evolution.command.*
-import com.evolution.command.Command.*
+import com.evolution.game.Command.*
 import com.evolution.direction.Direction.*
+import com.evolution.game.Command
 import com.evolution.player.PlayerId
 
 object KeyboardReader {

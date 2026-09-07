@@ -1,19 +1,13 @@
 package com.evolution.game
 
 import cats.data.EitherT
-import cats.effect.Clock
 import cats.effect.kernel.Async
-import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
-import com.evolution.command.Command
-import com.evolution.game.GameActorMessage.AddPlayer
-import com.evolution.player.Player.IdlePlayer
-import fs2.concurrent.Topic
 
 class GameService[F[_]: Async](
     private val repository: GameRepository[F],
-    private val clock: Clock[F]
+    private val websocketService: WebsocketService[F]
 ) {
 
   def createGame(nPlayers: PositiveNumber): F[GameWaiting] = {
@@ -30,15 +24,14 @@ class GameService[F[_]: Async](
     waitingGames: List[GameWaiting] = games.collect { case game: GameWaiting => game }
   } yield waitingGames
 
-  def joinGame(
+  def sendCommand(
       gameId: GameId,
-      player: IdlePlayer
-  ): F[Either[GameRepositoryError, (Topic[F, Game], Queue[F, Command])]] = {
-    val res: EitherT[F, GameRepositoryError, (Topic[F, Game], Queue[F, Command])] = for {
-      actor         <- EitherT(repository.getGameLoop(gameId))
-      now           <- EitherT.liftF(clock.realTimeInstant)
-      queueAndTopic <- EitherT(actor.addPlayer(AddPlayer(player), now))
-    } yield queueAndTopic
+      command: Command
+  ): F[Either[GameRepositoryError, Unit]] = {
+    val res: EitherT[F, GameRepositoryError, Unit] = for {
+      actor <- EitherT(repository.getGameLoop(gameId))
+      _     <- EitherT.right(actor.publishCommand(command))
+    } yield ()
     res.value
   }
 
@@ -47,7 +40,7 @@ class GameService[F[_]: Async](
       gameLoop <- GameActor
         .make(
           gameWaiting,
-          clock,
+          websocketService,
           (game: GameFinished) => {
             for {
               _ <- repository.update(game)
