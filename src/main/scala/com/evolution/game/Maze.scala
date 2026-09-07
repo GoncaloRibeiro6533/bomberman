@@ -5,9 +5,9 @@ import com.evolution.cell.*
 import com.evolution.cell.CellType.*
 import com.evolution.player.Player.*
 
-final case class Maze(width: Int, height: Int, cells: List[Position]) {
+final case class Maze(width: Int, height: Int, cells: Set[Position]) {
 
-  def insertPlayers(players: List[JoiningPlayer]): List[ActivePlayer] = {
+  def insertPlayers(players: Set[JoiningPlayer]): Set[ActivePlayer] = {
     val startCells = this.cells.filter(_.cellType == PlayerPosition)
     players.zip(startCells).map { case (player, position) =>
       player.toActivePlayer(position.cell)
@@ -20,7 +20,7 @@ final case class Maze(width: Int, height: Int, cells: List[Position]) {
       .toList
       .sortBy { case (line, _) => line.value.value }
       .map { case (_, positions) =>
-        val sorted = positions.sortBy(_.cell.col.value.value)
+        val sorted = positions.toList.sortBy(_.cell.col.value.value)
         (0 until width)
           .map(idx =>
             getCell(sorted, idx) match {
@@ -31,21 +31,19 @@ final case class Maze(width: Int, height: Int, cells: List[Position]) {
           .mkString
       }
 
-  private def getCell(positions: List[Position], idx: Int): Option[Position] =
+  private def getCell(positions: List[Position], idx: Int): Option[Position] = {
+    val playerCells = positions.filter(_.cellType == PlayerPosition)
     positions
-      .filterNot(position =>
-        position.cellType == BombPlacement &&
-          positions.exists(innerPosition =>
-            position.cellType == PlayerPosition &&
-              position.cell == innerPosition.cell
-          )
-      )
+      .filterNot { position =>
+        position.cellType == BombPlacement && playerCells.exists(_.cell == position.cell)
+      }
       .find(_.cell.col.value.value == idx)
+  }
 
-  def walls: List[Cell]           = cells.filter(_.cellType == Wall).map(_.cell)
-  def bombs: List[Cell]           = cells.filter(_.cellType == BombPlacement).map(_.cell)
-  def blocks: List[Cell]          = cells.filter(_.cellType == DestructibleBlock).map(_.cell)
-  def playerPositions: List[Cell] = cells.filter(_.cellType == PlayerPosition).map(_.cell)
+  def walls: Set[Cell]           = cells.filter(_.cellType == Wall).map(_.cell)
+  def bombs: Set[Cell]           = cells.filter(_.cellType == BombPlacement).map(_.cell)
+  def blocks: Set[Cell]          = cells.filter(_.cellType == DestructibleBlock).map(_.cell)
+  def playerPositions: Set[Cell] = cells.filter(_.cellType == PlayerPosition).map(_.cell)
 
 }
 
@@ -83,11 +81,11 @@ object Maze {
       Cell(Column(colNum), Line(lineNum)),
       cellType
     )
-    cells
+    cells.toSet
   }
 
   def apply(map: List[String]): Maze = {
-    val cells: List[Position] = loadMap(map)
+    val cells: Set[Position] = loadMap(map)
     Maze(map.map(_.length).max, map.size, cells)
   }
 
