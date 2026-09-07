@@ -17,19 +17,21 @@ import scala.annotation.tailrec
 sealed trait Game {
   def id: GameId
   def nPlayers: PositiveNumber
+
+  def allPlayers: Set[PlayerId]
 }
 
 @JsonCodec
-final case class GameWaiting(id: GameId, players: List[JoiningPlayer], nPlayers: PositiveNumber = PositiveNumber.Two)
+final case class GameWaiting(id: GameId, players: Set[JoiningPlayer], nPlayers: PositiveNumber = PositiveNumber.Two)
     extends Game {
-  def start(startedAt: Instant): GameRunning = {
+  private def start(startedAt: Instant): GameRunning = {
     val maze = Maze()
     GameRunning(
       id = id,
       nPlayers = nPlayers,
       activePlayers = maze.insertPlayers(players),
-      deadPlayers = Nil,
-      bombs = Nil,
+      deadPlayers = Set.empty,
+      bombs = Set.empty,
       walls = maze.walls,
       blocks = maze.blocks,
       startedAt = startedAt,
@@ -39,17 +41,28 @@ final case class GameWaiting(id: GameId, players: List[JoiningPlayer], nPlayers:
       duration = Duration.ofMinutes(2)
     )
   }
+
+  def join(player: IdlePlayer, startedAt: Instant): Either[String, Game] = {
+    if (players.size == nPlayers.value) scala.Left("Game is full")
+    else {
+      val newPlayers = players + player.toJoiningPlayer
+      if (newPlayers.size == nPlayers.value) scala.Right(this.copy(players = newPlayers).start(startedAt))
+      else scala.Right(copy(players = newPlayers))
+    }
+  }
+
+  override def allPlayers: Set[PlayerId] = players.map(_.id)
 }
 
 @JsonCodec
 final case class GameRunning(
     id: GameId,
     nPlayers: PositiveNumber,
-    activePlayers: List[ActivePlayer],
-    deadPlayers: List[DeadPlayer] = Nil,
-    bombs: List[Bomb],
-    walls: List[Cell],
-    blocks: List[Cell],
+    activePlayers: Set[ActivePlayer],
+    deadPlayers: Set[DeadPlayer] = Set.empty,
+    bombs: Set[Bomb],
+    walls: Set[Cell],
+    blocks: Set[Cell],
     startedAt: Instant,
     remainingTime: Duration,
     duration: Duration,
@@ -57,13 +70,15 @@ final case class GameRunning(
     height: Int
 ) extends Game {
 
-  private def getPositions: List[Position] = {
+  private def getPositions: Set[Position] = {
     val playerPositions = activePlayers.map(_.cell.toPosition(PlayerPosition))
     val wallsPositions  = walls.map(_.toPosition(Wall))
     val bombsPositions  = bombs.map(_.cell.toPosition(BombPlacement))
     val blocksPositions = blocks.map(_.toPosition(DestructibleBlock))
-    List.concat(playerPositions, wallsPositions, bombsPositions, blocksPositions)
+    Set.concat(playerPositions, wallsPositions, bombsPositions, blocksPositions)
   }
+
+  override def allPlayers: Set[PlayerId] = activePlayers.map(_.id) ++ deadPlayers.map(_.id)
 
   def getMaze: Maze = {
     Maze(width, height, getPositions)
@@ -87,9 +102,9 @@ final case class GameRunning(
       for {
         player <- activePlayers.find(_.id == id)
         if canPlantBomb(player)
-        bombId             = BombId(UUID.randomUUID())
-        updatedPlayerBombs = updatePlayerBombs(player, bombCount = BombCount.Zero)
-        updatedGameBombs   = Bomb(bombId, player.cell, id, instant) +: bombs
+        bombId                      = BombId(UUID.randomUUID())
+        updatedPlayerBombs          = updatePlayerBombs(player, bombCount = BombCount.Zero)
+        updatedGameBombs: Set[Bomb] = bombs + Bomb(bombId, player.cell, id, instant)
       } yield copy(
         bombs = updatedGameBombs,
         activePlayers = updatedPlayerBombs
@@ -100,40 +115,43 @@ final case class GameRunning(
     }
   }
 
-  def triggerBombs(now: Instant): Either[GameFinished, GameRunning] = {
+  def triggerBombs(now: Instant): Game = {
     val bombsToDetonate            = bombs.filter { bomb => bomb.isExpired(now) }
     val elapsed: Duration          = Duration.between(startedAt, now)
     val newRemainingTime: Duration = duration.minus(elapsed)
-    if (activePlayers.isEmpty || newRemainingTime.isNegative || newRemainingTime.isZero) { // print at least once the empty board
-      scala.Left(finish(activePlayers, deadPlayers))
+    val playersAlive               = nPlayers.value - deadPlayers.size
+    if (
+      activePlayers.isEmpty ||
+      (nPlayers.value == 1 && playersAlive == 0) ||
+      (nPlayers.value >= 2 && playersAlive <= 1) || newRemainingTime.isNegative || newRemainingTime.isZero
+    ) { // print at least once the empty board
+      finish(activePlayers, deadPlayers)
     } else {
       if (bombsToDetonate.nonEmpty) {
-        val bombsWithAffectedCells: Map[Bomb, List[Cell]] =
-          bombsToDetonate.foldRight(Map[Bomb, List[Cell]]().empty)((bomb, map) =>
+        val bombsWithAffectedCells: Map[Bomb, Set[Cell]] =
+          bombsToDetonate.foldRight(Map[Bomb, Set[Cell]]().empty)((bomb, map) =>
             map.updated(bomb, cellsInRadius(bomb.cell, bomb.radius.value))
           )
-        val remainingBlocks = blocks.filterNot(block => bombsWithAffectedCells.values.flatten.toSet.contains(block))
+        val remainingBlocks                          = blocks.diff(bombsWithAffectedCells.values.flatten.toSet)
         val killedPlayers: Map[ActivePlayer, Killer] = getKilledPlayers(activePlayers, bombsWithAffectedCells)
         val (newDeadPlayers, newActivePlayers) =
           getPlayersWithScoreUpdated(activePlayers, deadPlayers, killedPlayers, bombsToDetonate)
-        val remainingBombs = bombs.filterNot(bombsToDetonate.contains(_))
-        scala.Right(
-          copy(
-            activePlayers = newActivePlayers,
-            deadPlayers = newDeadPlayers,
-            blocks = remainingBlocks,
-            bombs = remainingBombs,
-            remainingTime = newRemainingTime
-          )
+        val remainingBombs = bombs.diff(bombsToDetonate)
+        copy(
+          activePlayers = newActivePlayers,
+          deadPlayers = newDeadPlayers,
+          blocks = remainingBlocks,
+          bombs = remainingBombs,
+          remainingTime = newRemainingTime
         )
-      } else scala.Right(copy(remainingTime = newRemainingTime))
+      } else copy(remainingTime = newRemainingTime)
     }
   }
 
   private type Killer = PlayerId
   private def getKilledPlayers(
-      activePlayers: List[ActivePlayer],
-      affectedCells: Map[Bomb, List[Cell]]
+      activePlayers: Set[ActivePlayer],
+      affectedCells: Map[Bomb, Set[Cell]]
   ): Map[ActivePlayer, Killer] = {
     val killedPlayers: Map[ActivePlayer, Killer] = activePlayers.foldRight(Map[ActivePlayer, Killer]().empty) {
       (player, map) =>
@@ -148,11 +166,11 @@ final case class GameRunning(
   }
 
   private def getPlayersWithScoreUpdated(
-      activePlayers: List[ActivePlayer],
-      deadPlayers: List[DeadPlayer],
+      activePlayers: Set[ActivePlayer],
+      deadPlayers: Set[DeadPlayer],
       killedPlayers: Map[ActivePlayer, Killer],
-      bombsToDetonate: List[Bomb]
-  ): (List[DeadPlayer], List[ActivePlayer]) = {
+      bombsToDetonate: Set[Bomb]
+  ): (Set[DeadPlayer], Set[ActivePlayer]) = {
     val invertedMap: Map[Killer, Iterable[ActivePlayer]] = killedPlayers
       .groupBy { case (_, killer) =>
         killer
@@ -162,7 +180,7 @@ final case class GameRunning(
       }
     val (deadPlayersUpdatedScore, activePlayersUpdatedScore) =
       updateKillersScores(invertedMap, deadPlayers, activePlayers)
-    val playersKilled = killedPlayers.keys.toList
+    val playersKilled = killedPlayers.keySet
     val updatedDeadPlayers =
       newDeadPlayers(deadPlayers, deadPlayersUpdatedScore, activePlayersUpdatedScore, playersKilled)
     val updatedActivePlayers =
@@ -171,26 +189,26 @@ final case class GameRunning(
   }
 
   private def newDeadPlayers(
-      deadPlayers: List[DeadPlayer],
-      deadPlayersUpdatedScore: List[DeadPlayer],
-      activePlayersUpdatedScore: List[ActivePlayer],
-      playersKilled: List[ActivePlayer]
-  ): List[DeadPlayer] = {
-    val activeToDeadPlayersNoScoreUpdated = playersKilled.distinct
+      deadPlayers: Set[DeadPlayer],
+      deadPlayersUpdatedScore: Set[DeadPlayer],
+      activePlayersUpdatedScore: Set[ActivePlayer],
+      playersKilled: Set[ActivePlayer]
+  ): Set[DeadPlayer] = {
+    val activeToDeadPlayersNoScoreUpdated = playersKilled
       .filterNot(player => activePlayersUpdatedScore.exists(_.id == player.id))
       .map(_.toDeadPlayer)
     val activeToDeadPlayersScoreUpdated =
-      playersKilled.distinct.filter(player => activePlayersUpdatedScore.exists(_.id == player.id)).map(_.toDeadPlayer)
+      playersKilled.filter(player => activePlayersUpdatedScore.exists(_.id == player.id)).map(_.toDeadPlayer)
     val deadPlayersWithNoUpdatedScore = deadPlayers.filter(player => deadPlayersUpdatedScore.exists(_.id == player.id))
     deadPlayersWithNoUpdatedScore ++ deadPlayersUpdatedScore ++ activeToDeadPlayersNoScoreUpdated ++ activeToDeadPlayersScoreUpdated
   }
 
   private def newActivePlayers(
-      activePlayers: List[ActivePlayer],
-      activePlayersUpdatedScore: List[ActivePlayer],
-      playersKilled: List[ActivePlayer],
-      bombsToDetonate: List[Bomb]
-  ): List[ActivePlayer] = {
+      activePlayers: Set[ActivePlayer],
+      activePlayersUpdatedScore: Set[ActivePlayer],
+      playersKilled: Set[ActivePlayer],
+      bombsToDetonate: Set[Bomb]
+  ): Set[ActivePlayer] = {
     val activePlayersWithNoUpdatedScoreNotKilled = activePlayers.filter(player =>
       !playersKilled.exists(_.id == player.id) && !activePlayersUpdatedScore.exists(_.id == player.id)
     )
@@ -203,9 +221,9 @@ final case class GameRunning(
 
   private def updateKillersScores(
       invertedMap: Map[Killer, Iterable[ActivePlayer]],
-      deadPlayers: List[DeadPlayer],
-      activePlayers: List[ActivePlayer]
-  ): (List[DeadPlayer], List[ActivePlayer]) = {
+      deadPlayers: Set[DeadPlayer],
+      activePlayers: Set[ActivePlayer]
+  ): (Set[DeadPlayer], Set[ActivePlayer]) = {
     val updatedKillersScore = invertedMap
       .map { case (killer, players) =>
         val points = players.map(player => if (player.id != killer) 1 else -1).sum
@@ -224,46 +242,40 @@ final case class GameRunning(
       .flatten
     val deadPlayersUpdatedScore   = updatedKillersScore.collect { case player: DeadPlayer => player }
     val activePlayersUpdatedScore = updatedKillersScore.collect { case player: ActivePlayer => player }
-    (deadPlayersUpdatedScore, activePlayersUpdatedScore)
+    (deadPlayersUpdatedScore.toSet, activePlayersUpdatedScore.toSet)
   }
 
   private def canPlantBomb(player: ActivePlayer): Boolean =
     player.bombs.value > 0 && !bombs.exists(_.cell == player.cell)
 
-  private def updatePlayerPosition(player: ActivePlayer, value: Cell): List[ActivePlayer] = {
-    val others     = activePlayers.filter(_.id != player.id)
-    val newPlayers = player.copy(cell = value) +: others
-    newPlayers
-  }
+  private def updatePlayerPosition(player: ActivePlayer, value: Cell): Set[ActivePlayer] =
+    activePlayers.filter(_.id != player.id) + player.copy(cell = value)
 
-  private def updatePlayerBombs(player: ActivePlayer, bombCount: BombCount): List[ActivePlayer] = {
-    val others     = activePlayers.filter(_.id != player.id)
-    val newPlayers = player.copy(bombs = bombCount) +: others
-    newPlayers
-  }
+  private def updatePlayerBombs(player: ActivePlayer, bombCount: BombCount): Set[ActivePlayer] =
+    activePlayers.filter(_.id != player.id) + player.copy(bombs = bombCount)
 
   private def isWalkableCell(value: Cell) = {
     !walls.contains(value) && !blocks.contains(value) && !bombs.exists(_.cell == value)
   }
 
-  private def cellsInRadius(center: Cell, radius: Int): List[Cell] = {
+  private def cellsInRadius(center: Cell, radius: Int): Set[Cell] = {
     @tailrec
-    def getCells(cells: List[Cell], center: Cell, radius: Int, direction: Direction): List[Cell] = {
+    def getCells(cells: Set[Cell], center: Cell, radius: Int, direction: Direction): Set[Cell] = {
       if (radius == 0) cells
       else {
         center + direction match {
           case Some(value) =>
-            getCells(value +: cells, value, radius - 1, direction)
+            getCells(cells + value, value, radius - 1, direction)
           case None =>
             cells
         }
       }
     }
-    List(Up, Down, Left, Right).flatMap(getCells(List(center), center, radius, _))
+    Set(Up, Down, Left, Right).flatMap(getCells(Set(center), center, radius, _))
   }
 
-  private def finish(activePlayers: List[ActivePlayer], deadPlayers: List[DeadPlayer]): GameFinished = {
-    val winner = activePlayers.sortBy(_.score.value).headOption match {
+  private def finish(activePlayers: Set[ActivePlayer], deadPlayers: Set[DeadPlayer]): GameFinished = {
+    val winner = activePlayers.toList.sortBy(_.score.value).headOption match {
       case Some(value) => value
       case None        => deadPlayers.maxBy(_.score.value)
     }
@@ -282,6 +294,9 @@ final case class GameFinished(
     id: GameId,
     nPlayers: PositiveNumber,
     winner: Player,
-    survivors: List[ActivePlayer],
-    killed: List[DeadPlayer]
-) extends Game
+    survivors: Set[ActivePlayer],
+    killed: Set[DeadPlayer]
+) extends Game {
+  override def allPlayers: Set[PlayerId] = survivors.map(_.id) ++ killed.map(_.id)
+
+}
