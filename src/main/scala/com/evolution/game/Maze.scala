@@ -1,8 +1,7 @@
 package com.evolution.game
 
-import com.evolution.cell.{Column, Line}
-import com.evolution.cell.*
 import com.evolution.cell.CellType.*
+import com.evolution.cell.*
 import com.evolution.player.Player.*
 
 final case class Maze(width: Int, height: Int, cells: Set[Position]) {
@@ -14,7 +13,17 @@ final case class Maze(width: Int, height: Int, cells: Set[Position]) {
     }
   }
 
-  def toPrintable: List[String] =
+  def toPrintable: List[String] = toString {
+    (position: Position) => position.toChar
+  }
+
+  def toPrintable(playerCell: Cell): List[String] = toString {
+    position => if (position.cellType == PlayerPosition && position.cell != playerCell) 'O' else
+      position.toChar
+  }
+
+
+  private def toString(onConvertToChar: Position => Char): List[String] =
     cells
       .groupBy(pos => pos.cell.line)
       .toList
@@ -24,12 +33,13 @@ final case class Maze(width: Int, height: Int, cells: Set[Position]) {
         (0 until width)
           .map(idx =>
             getCell(sorted, idx) match {
-              case Some(value) => value.toChar
+              case Some(value) => onConvertToChar(value)
               case None        => ' '
             }
           )
           .mkString
       }
+
 
   private def getCell(positions: List[Position], idx: Int): Option[Position] = {
     val playerCells = positions.filter(_.cellType == PlayerPosition)

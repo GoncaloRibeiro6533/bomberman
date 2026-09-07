@@ -72,17 +72,20 @@ object ClientApp extends IOApp {
       _ <- sendCommand(client, playerId)
     } yield ()
 
-  private def printBoard(game: GameRunning): IO[Unit] = for {
+  private def printBoard(game: GameRunning, playerId: PlayerId): IO[Unit] = for {
     _ <- IO.println(f"${game.remainingTime.toMinutesPart}%02d:${game.remainingTime.toSecondsPart}%02d")
-    _ <- game.getMaze.toPrintable.traverse_(IO.println)
+    _ <- game.activePlayers.find(_.id == playerId) match {
+      case Some(value) => game.getMaze.toPrintable(value.cell).traverse_(IO.println)
+      case None => game.getMaze.toPrintable.traverse_(IO.println)
+    }
   } yield ()
 
-  private def printGame(game: Game): IO[Unit] = {
+  private def printGame(game: Game, playerId: PlayerId): IO[Unit] = {
     game match {
       case GameWaiting(_, _, _) =>
         IO.println("Waiting for players...")
       case running: GameRunning =>
-        printBoard(running)
+        printBoard(running, playerId)
       case gameFinished: GameFinished =>
         IO.println(s"Game over: Winner is ${gameFinished.winner.username.value}")
     }
@@ -296,7 +299,7 @@ object ClientApp extends IOApp {
           _ <- client.receiveStream
             .collect { case WSFrame.Text(json, _) => decode[Game](json) }
             .evalTap {
-              case Right(game) => printGame(game)
+              case Right(game) => printGame(game, player.player.id)
               case Left(error) => IO.println(s"Failed to decode game: $error")
             }
             .takeWhile {
