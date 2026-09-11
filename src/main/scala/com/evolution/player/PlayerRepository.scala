@@ -7,7 +7,8 @@ import java.time.Instant
 trait PlayerRepository[F[_]] {
   def findPlayer(playerId: PlayerId): F[Option[IdlePlayer]]
   def findPlayerByUsername(username: Username): F[Option[IdlePlayer]]
-  def insertPlayer(username: Username): F[Either[PlayerRepositoryError, IdlePlayer]]
+  def findPlayerPassword(playerId: PlayerId): F[Option[PasswordValidationInfo]]
+  def insertPlayer(username: Username, passwordValidationInfo: PasswordValidationInfo): F[Either[PlayerRepositoryError, IdlePlayer]]
   def update(player: IdlePlayer): F[Either[PlayerRepositoryError, IdlePlayer]]
   def createToken(createdAt: Instant, value: TokenInfo, player: IdlePlayer): F[Token]
   def deleteToken(player: IdlePlayer): F[Either[PlayerRepositoryError, Unit]]

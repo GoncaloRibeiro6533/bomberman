@@ -13,3 +13,5 @@ object Username {
     Username(value).toRight(s"Invalid Username: $value")
   }
 }
+
+

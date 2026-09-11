@@ -1,34 +1,40 @@
 package com.evolution.player
 
 import cats.data.EitherT
-import cats.effect.kernel.{Async}
+import cats.effect.kernel.Async
+import com.evolution.http.HashUtils
 import com.evolution.player.Player.IdlePlayer
 import com.evolution.util.IdGenerator
 import io.circe.generic.JsonCodec
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 @JsonCodec
 final case class AuthPlayer(player: IdlePlayer, token: Token)
 
 class PlayerService[F[_]: Async](private val playerRepository: PlayerRepository[F]) {
+  implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
 
-  def createPlayer(username: Username): F[Either[PlayerRepositoryError, AuthPlayer]] = {
+  def createPlayer(username: Username, password: PasswordIn): F[Either[PlayerRepositoryError, IdlePlayer]] = {
     val res = for {
-      player <- EitherT(playerRepository.insertPlayer(username))
-      now    <- EitherT.right(Async[F].realTimeInstant)
-      uuid   <- EitherT.right(IdGenerator.generateUUID[F])
-      token <- EitherT.liftF[F, PlayerRepositoryError, Token](
-        playerRepository.createToken(now, TokenInfo(uuid), player)
-      )
-    } yield AuthPlayer(player = player, token = token)
+      hash <- EitherT.fromOptionF(HashUtils.hash(password.value), InvalidPassword) // TODO must validate password size, format
+      passwordInfo = PasswordValidationInfo(hash)
+      player <- EitherT(playerRepository.insertPlayer(username, passwordInfo))
+      _ <- EitherT.liftF[F,PlayerRepositoryError, Unit](Logger[F].info(s"Created player: ${username.value} with id: ${player.id.value}"))
+    } yield player
     res.value
   }
 
-  def login(username: Username): F[Either[PlayerRepositoryError, AuthPlayer]] = {
+  def login(username: Username, password: String): F[Either[PlayerRepositoryError, AuthPlayer]] = {
     val res: EitherT[F, PlayerRepositoryError, AuthPlayer] = for {
       player <- EitherT.fromOptionF(playerRepository.findPlayerByUsername(username), PlayerNotFound)
+      hash <- EitherT.fromOptionF(HashUtils.hash(password), InvalidPassword)
+      password <- EitherT.fromOptionF(playerRepository.findPlayerPassword(player.id), PlayerNotFound)
+      _ <- if (password.value == hash) EitherT.liftF(Async[F].unit) else EitherT.leftT(InvalidPassword)
       now    <- EitherT.liftF(Async[F].realTimeInstant)
       uuid   <- EitherT.liftF(IdGenerator.generateUUID)
       token  <- EitherT.liftF(playerRepository.createToken(now, TokenInfo(uuid), player))
+      _ <- EitherT.liftF(Logger[F].info(s"Created token for: ${username.value} with id: ${player.id.value}"))
     } yield AuthPlayer(player = player, token = token)
     res.value
   }

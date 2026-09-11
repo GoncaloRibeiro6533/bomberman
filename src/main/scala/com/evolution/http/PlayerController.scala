@@ -5,9 +5,26 @@ import cats.effect.kernel.Async
 import cats.syntax.all.*
 import com.evolution.player.*
 import com.evolution.player.Player.IdlePlayer
+import fs2.hashing.{Hash, HashAlgorithm, Hashing}
+import fs2.{Chunk, Pipe}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.`WWW-Authenticate`
 import org.http4s.{AuthedRoutes, Challenge, HttpRoutes, Response}
+
+
+object HashUtils {
+
+  def hash[F[_]: Async](value: String): F[Option[String]] = {
+    val pipe: Pipe[F, Byte, Hash] = Hashing.forSync[F].hash(HashAlgorithm.SHA256)
+    val stream: fs2.Stream[F, Byte] = fs2.Stream.chunk(Chunk.array(value.getBytes))
+    val hashedPassword: F[Option[Hash]] = stream.through(pipe).compile.last
+    val res: F[Option[String]] = hashedPassword.map {
+      case Some(value) => Some(value.toString())
+      case None => None
+    }
+    res
+  }
+}
 
 object PlayerController {
   import org.http4s.circe.CirceEntityCodec.*
@@ -20,8 +37,8 @@ object PlayerController {
     HttpRoutes.of[F] {
       case req @ POST -> Root / "player" =>
         for {
-          playerIn <- req.as[PlayerRequest]
-          player   <- service.createPlayer(playerIn.username)
+          playerIn <- req.as[PlayerCredentials]
+          player   <- service.createPlayer(playerIn.username, playerIn.password)
           res <- player match {
             case Left(value)  => value.toResponse
             case Right(value) => Created(value)
@@ -29,8 +46,8 @@ object PlayerController {
         } yield res
       case req @ POST -> Root / "player" / "login" =>
         for {
-          playerIn <- req.as[PlayerRequest]
-          player   <- service.login(playerIn.username)
+          playerIn <- req.as[PlayerCredentials]
+          player   <- service.login(playerIn.username, playerIn.password.value)
           res <- player match {
             case Left(value)  => value.toResponse
             case Right(value) => Created(value)
@@ -65,8 +82,8 @@ object PlayerController {
         case PlayerNotFound       => NotFound("Player not found")
         case TokenNotFound        => NotFound("Token not found")
         case UsernameAlreadyTaken => Conflict("Username already taken")
-        case com.evolution.player.Unauthorized | NoToken | InvalidUUID =>
-          Unauthorized(`WWW-Authenticate`.apply(NonEmptyList.of(Challenge("WWW-Authenticate", ""))))
+        case InvalidPassword => BadRequest("Password must have at least 12 characters")
+        case com.evolution.player.Unauthorized | NoToken | InvalidUUID => Unauthorized(`WWW-Authenticate`.apply(NonEmptyList.of(Challenge("WWW-Authenticate", ""))))
       }
     }
   }
