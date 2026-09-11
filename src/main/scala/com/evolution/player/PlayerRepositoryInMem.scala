@@ -29,7 +29,7 @@ case object InvalidPassword      extends PlayerRepositoryError
 class PlayerRepositoryInMem[F[_]: Async](
     private val players: Ref[F, Map[PlayerId, IdlePlayer]],
     private val tokens: Ref[F, Map[PlayerId, Token]],
-    private val passwords: Ref[F, Map[PlayerId, PasswordValidationInfo]],
+    private val passwords: Ref[F, Map[PlayerId, PasswordValidationInfo]]
 ) extends PlayerRepository[F] {
 
   override def findPlayer(playerId: PlayerId): F[Option[IdlePlayer]] =
@@ -38,7 +38,10 @@ class PlayerRepositoryInMem[F[_]: Async](
   override def findPlayerByUsername(username: Username): F[Option[IdlePlayer]] =
     players.get.map(_.find(_._2.username == username).map(_._2))
 
-  override def insertPlayer(username: Username, passwordValidationInfo: PasswordValidationInfo): F[Either[PlayerRepositoryError, IdlePlayer]] = {
+  override def insertPlayer(
+      username: Username,
+      passwordValidationInfo: PasswordValidationInfo
+  ): F[Either[PlayerRepositoryError, IdlePlayer]] = {
     for {
       uuid <- IdGenerator.generateUUID[F]
       playerId = PlayerId(uuid)
@@ -49,8 +52,8 @@ class PlayerRepositoryInMem[F[_]: Async](
           case None    => (oldPlayers.updated(player.id, player), player.asRight)
         }
       }
-      _ <- passwords.modify {
-        state => (state.updated(playerId, passwordValidationInfo), ())
+      _ <- passwords.modify { state =>
+        (state.updated(playerId, passwordValidationInfo), ())
       }
     } yield res
   }
@@ -71,7 +74,7 @@ class PlayerRepositoryInMem[F[_]: Async](
   override def deleteToken(player: IdlePlayer): F[Either[PlayerRepositoryError, Unit]] = tokens.modify { oldTokens =>
     oldTokens.get(player.id) match {
       case Some(_) => (oldTokens.removed(player.id), ().asRight)
-      case None        => (oldTokens, TokenNotFound.asLeft)
+      case None    => (oldTokens, TokenNotFound.asLeft)
     }
   }
 

@@ -13,19 +13,18 @@ final case class Maze(width: Int, height: Int, cells: Set[Position]) {
     }
   }
 
-  def toPrintable: List[String] = toString {
-    (position: Position) => position.toChar
+  def toPrintable: List[String] = toString { (position: Position) =>
+    position.toChar
   }
 
   def toPrintable(player: Option[ActivePlayer]): List[String] = toString { position =>
-    if(position.cellType == PlayerPosition){
+    if (position.cellType == PlayerPosition) {
       player match {
-        case Some(value) if position.cell == value.cell =>  position.toChar
-        case _ => 'O'
+        case Some(value) if position.cell == value.cell => position.toChar
+        case _                                          => 'O'
       }
     } else position.toChar
   }
-
 
   private def toString(onConvertToChar: Position => Char): List[String] =
     cells
@@ -43,7 +42,6 @@ final case class Maze(width: Int, height: Int, cells: Set[Position]) {
           )
           .mkString
       }
-
 
   private def getCell(positions: List[Position], idx: Int): Option[Position] = {
     val playerCells = positions.filter(_.cellType == PlayerPosition)

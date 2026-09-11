@@ -59,8 +59,6 @@ class WebsocketServiceImpl[F[_]: Async](
 
   implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
 
-
-
   override def connect[A: Decoder](
       playerId: PlayerId,
       webSocketBuilder2: WebSocketBuilder2[F],
@@ -69,7 +67,7 @@ class WebsocketServiceImpl[F[_]: Async](
     for {
       queue <- Queue.bounded[F, WebSocketFrame](10)
       _     <- connections.modify(currentConnections => (currentConnections.updated(playerId, queue), ()))
-      _ <- Logger[F].info(s"Player with id: ${playerId.value} connected")
+      _     <- Logger[F].info(s"Player with id: ${playerId.value} connected")
       response <- webSocketBuilder2
         .withOnClose(disconnect(playerId, "connection closed abruptly"))
         .build(
@@ -81,8 +79,9 @@ class WebsocketServiceImpl[F[_]: Async](
           receive = _.evalMap { frame =>
             handleFrame(
               frame = frame,
-              onError = { () => for {
-                 _ <- Logger[F].info(s"Failed to parse message: $frame from player with id: ${playerId.value}")
+              onError = { () =>
+                for {
+                  _ <- Logger[F].info(s"Failed to parse message: $frame from player with id: ${playerId.value}")
                   _ <- queue.offer(WebSocketFrame.Text("could not parse message"))
                 } yield ()
               },

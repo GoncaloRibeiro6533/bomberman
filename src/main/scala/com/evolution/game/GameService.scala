@@ -20,7 +20,7 @@ class GameService[F[_]: Async](
       game <- repository.insertGame(nPlayers)
       loop <- createLoop(gameWaiting = game)
       _    <- repository.insertGameLoop(game.id, loop)
-      _ <- Logger[F].info(s"Game created with id: ${game.id.id}")
+      _    <- Logger[F].info(s"Game created with id: ${game.id.id}")
     } yield game
     res
   }
@@ -37,7 +37,7 @@ class GameService[F[_]: Async](
     val res: EitherT[F, GameRepositoryError, Unit] = for {
       actor <- EitherT(repository.getGameLoop(gameId))
       _     <- EitherT.right(actor.publishCommand(command))
-      _ <- EitherT.liftF(Logger[F].info(s"Sent command: $command"))
+      _     <- EitherT.liftF(Logger[F].info(s"Sent command: $command"))
     } yield ()
     res.value
   }

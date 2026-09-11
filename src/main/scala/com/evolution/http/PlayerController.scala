@@ -11,16 +11,15 @@ import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.`WWW-Authenticate`
 import org.http4s.{AuthedRoutes, Challenge, HttpRoutes, Response}
 
-
 object HashUtils {
 
   def hash[F[_]: Async](value: String): F[Option[String]] = {
-    val pipe: Pipe[F, Byte, Hash] = Hashing.forSync[F].hash(HashAlgorithm.SHA256)
-    val stream: fs2.Stream[F, Byte] = fs2.Stream.chunk(Chunk.array(value.getBytes))
+    val pipe: Pipe[F, Byte, Hash]       = Hashing.forSync[F].hash(HashAlgorithm.SHA256)
+    val stream: fs2.Stream[F, Byte]     = fs2.Stream.chunk(Chunk.array(value.getBytes))
     val hashedPassword: F[Option[Hash]] = stream.through(pipe).compile.last
     val res: F[Option[String]] = hashedPassword.map {
       case Some(value) => Some(value.toString())
-      case None => None
+      case None        => None
     }
     res
   }
@@ -82,8 +81,9 @@ object PlayerController {
         case PlayerNotFound       => NotFound("Player not found")
         case TokenNotFound        => NotFound("Token not found")
         case UsernameAlreadyTaken => Conflict("Username already taken")
-        case InvalidPassword => BadRequest("Password must have at least 12 characters")
-        case com.evolution.player.Unauthorized | NoToken | InvalidUUID => Unauthorized(`WWW-Authenticate`.apply(NonEmptyList.of(Challenge("WWW-Authenticate", ""))))
+        case InvalidPassword      => BadRequest("Password must have at least 12 characters")
+        case com.evolution.player.Unauthorized | NoToken | InvalidUUID =>
+          Unauthorized(`WWW-Authenticate`.apply(NonEmptyList.of(Challenge("WWW-Authenticate", ""))))
       }
     }
   }

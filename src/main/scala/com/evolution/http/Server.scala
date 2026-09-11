@@ -63,7 +63,7 @@ object Server extends IOApp {
       for {
         players     <- Ref[IO].of(Map[PlayerId, IdlePlayer]().empty)
         tokens      <- Ref[IO].of(Map[PlayerId, Token]().empty)
-        passwords    <- Ref[IO].of(Map[PlayerId, PasswordValidationInfo]().empty)
+        passwords   <- Ref[IO].of(Map[PlayerId, PasswordValidationInfo]().empty)
         connections <- Ref[IO].of(Map[PlayerId, Queue[IO, WebSocketFrame]]().empty)
         websocketService = new WebsocketServiceImpl[IO](connections)
         playerRepo       = new PlayerRepositoryInMem[IO](players, tokens, passwords)

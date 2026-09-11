@@ -59,12 +59,12 @@ class GameActor[F[_]: Async](
             broadcastState(newGameState) as newGameState
           case Command.Movement(playerId, direction) =>
             gameRunning.processMovement(playerId, direction) match {
-              case Left(error) => websocketService.send(playerId, error) as game
+              case Left(error)         => websocketService.send(playerId, error) as game
               case Right(newGameState) => broadcastState(newGameState) as newGameState
             }
           case Command.PlantBomb(playerId) =>
             gameRunning.processBombPlanting(playerId, instant) match {
-              case Left(error) => websocketService.send(playerId, error) as game
+              case Left(error)         => websocketService.send(playerId, error) as game
               case Right(newGameState) => broadcastState(newGameState) as newGameState
             }
           case Command.Join(player) =>

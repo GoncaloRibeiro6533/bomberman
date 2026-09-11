@@ -70,9 +70,9 @@ object ClientApp extends IOApp {
   private def sendCommand(client: WSConnectionHighLevel[IO], playerId: PlayerId): IO[Unit] =
     for {
       cmd <- KeyboardReader.readCommand[IO](playerId)
-      _ <- IO.println(cmd.asJson.noSpaces)
-      _ <- client.send(WSFrame.Text(cmd.asJson.noSpaces))
-      _ <- sendCommand(client, playerId)
+      _   <- IO.println(cmd.asJson.noSpaces)
+      _   <- client.send(WSFrame.Text(cmd.asJson.noSpaces))
+      _   <- sendCommand(client, playerId)
     } yield ()
 
   private def printBoard(game: GameRunning, playerId: PlayerId): IO[Unit] = for {
@@ -111,10 +111,10 @@ object ClientApp extends IOApp {
     } yield ()
 
   private def printMenuLogged(
-                               player: AuthPlayer,
-                               ref: Ref[IO, Option[AuthPlayer]],
-                               client: Client[IO]
-                             ) = {
+      player: AuthPlayer,
+      ref: Ref[IO, Option[AuthPlayer]],
+      client: Client[IO]
+  ) = {
     for {
       option <- menuLogged
       _ <- option match {
@@ -142,12 +142,12 @@ object ClientApp extends IOApp {
   }
 
   private def makeRequest[I: Encoder, O: Decoder](
-                                                   client: Client[IO],
-                                                   uri: Uri,
-                                                   method: Method,
-                                                   body: Option[I] = None,
-                                                   headers: Option[Headers] = None
-                                                 ): IO[Option[O]] = method match {
+      client: Client[IO],
+      uri: Uri,
+      method: Method,
+      body: Option[I] = None,
+      headers: Option[Headers] = None
+  ): IO[Option[O]] = method match {
     case GET    => handleResponse[O](client, addHeadersAndBody[I](GET, uri, body, headers))
     case POST   => handleResponse[O](client, addHeadersAndBody[I](POST, uri, body, headers))
     case DELETE => handleResponse[O](client, addHeadersAndBody[I](DELETE, uri, body, headers))
@@ -178,7 +178,7 @@ object ClientApp extends IOApp {
   }
 
   private def addHeadersAndBody[I](method: Method, uri: Uri, body: Option[I], headers: Option[Headers])(implicit
-                                                                                                        entityEncoder: EntityEncoder[IO, I]
+      entityEncoder: EntityEncoder[IO, I]
   ): Request[IO] = {
     (body, headers) match {
       case (Some(body), Some(headers)) => method.apply(body = body, uri = uri, headers = headers)
@@ -193,8 +193,8 @@ object ClientApp extends IOApp {
       _        <- OptionT.liftF(IO.print("Username (must have at least 4 characters): "))
       line     <- OptionT.liftF(IO.readLine)
       username <- OptionT.fromOption[IO](Username(line))
-      _ <- OptionT.liftF(IO.print("Password (must have at least 12 characters): "))
-      line2 <- OptionT.liftF(IO.readLine)
+      _        <- OptionT.liftF(IO.print("Password (must have at least 12 characters): "))
+      line2    <- OptionT.liftF(IO.readLine)
       password <- OptionT.fromOption[IO](PasswordIn(line2))
       _ <- OptionT(
         makeRequest[PlayerCredentials, IdlePlayer](
@@ -214,15 +214,20 @@ object ClientApp extends IOApp {
       _        <- OptionT.liftF(IO.print("Username: "))
       line     <- OptionT.liftF(IO.readLine)
       username <- OptionT.fromOption[IO](Username(line))
-      _ <- OptionT.liftF(IO.print("Password: "))
-      line2 <- OptionT.liftF(IO.readLine)
+      _        <- OptionT.liftF(IO.print("Password: "))
+      line2    <- OptionT.liftF(IO.readLine)
       password <- OptionT.fromOption[IO](PasswordIn(line2))
-      _ <- OptionT.liftF(loginRequest(playerRef, username, password, client))
+      _        <- OptionT.liftF(loginRequest(playerRef, username, password, client))
     } yield ()
     res.value.void
   }
 
-  private def loginRequest(playerRef: Ref[IO, Option[AuthPlayer]], username: Username, password: PasswordIn, client: Client[IO]): IO[Unit] = {
+  private def loginRequest(
+      playerRef: Ref[IO, Option[AuthPlayer]],
+      username: Username,
+      password: PasswordIn,
+      client: Client[IO]
+  ): IO[Unit] = {
     val res = for {
       player <- OptionT(
         makeRequest[PlayerCredentials, AuthPlayer](
@@ -294,10 +299,10 @@ object ClientApp extends IOApp {
       }
     } yield ()
 
-
   private val gameDecoder: String => Either[io.circe.Error, Either[String, Game]] =
     str =>
-      jawn.decode[Game](str)
+      jawn
+        .decode[Game](str)
         .map(Right(_))
         .orElse(decode[String](str).map(Left(_)))
 
@@ -316,15 +321,15 @@ object ClientApp extends IOApp {
           _ <- client.receiveStream
             .collect { case WSFrame.Text(json, _) => gameDecoder(json) }
             .evalTap {
-              case Left(error) => IO.println(s"Failed to decode game: $error")
+              case Left(error)        => IO.println(s"Failed to decode game: $error")
               case Right(Left(error)) => IO.println(error)
               case Right(Right(game)) => printGame(game, player.player.id)
             }
             .takeWhile {
-              case Left(_) => true
-              case Right(Left(_)) => true
-              case Right(Right(_: GameWaiting)) => true
-              case Right(Right(_: GameRunning)) => true
+              case Left(_)                       => true
+              case Right(Left(_))                => true
+              case Right(Right(_: GameWaiting))  => true
+              case Right(Right(_: GameRunning))  => true
               case Right(Right(_: GameFinished)) => false
             }
             .compile
