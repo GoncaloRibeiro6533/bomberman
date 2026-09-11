@@ -77,13 +77,16 @@ object PlayerController {
     override def toStatus[F[_]: Async](error: PlayerRepositoryError): F[Response[F]] = {
       val dsl = Http4sDsl[F]
       import dsl.*
+      val authChallenge = `WWW-Authenticate`(NonEmptyList.of(Challenge("Bearer", "")))
       error match {
         case PlayerNotFound       => NotFound("Player not found")
         case TokenNotFound        => NotFound("Token not found")
         case UsernameAlreadyTaken => Conflict("Username already taken")
         case InvalidPassword      => BadRequest("Password must have at least 12 characters")
+        case WrongPassword =>
+          Unauthorized(authChallenge, "Invalid username or password")
         case com.evolution.player.Unauthorized | NoToken | InvalidUUID =>
-          Unauthorized(`WWW-Authenticate`.apply(NonEmptyList.of(Challenge("WWW-Authenticate", ""))))
+          Unauthorized(authChallenge)
       }
     }
   }

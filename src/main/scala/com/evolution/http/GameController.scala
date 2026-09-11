@@ -66,11 +66,17 @@ object GameController {
         )
         player <- playerService.getPlayer(PlayerId(playerId))
         _ <- player match {
-          case Some(value) => gameService.sendCommand(GameId(gameId), Command.Join(value))
-          case None        => Async[F].unit
+          case Some(value) =>
+            for {
+              joinRes <- gameService.sendCommand(GameId(gameId), Command.Join(value))
+              _ <- joinRes match {
+                case Left(_)  => websocketService.disconnect(value.id, "Game not found")
+                case Right(_) => Async[F].unit
+              }
+            } yield ()
+          case None => websocketService.disconnect(PlayerId(playerId), "Player not found")
         }
       } yield response
-
     }
   }
 

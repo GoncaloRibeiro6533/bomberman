@@ -17,12 +17,9 @@ class PlayerService[F[_]: Async](private val playerRepository: PlayerRepository[
 
   def createPlayer(username: Username, password: PasswordIn): F[Either[PlayerRepositoryError, IdlePlayer]] = {
     val res = for {
-      hash <- EitherT.fromOptionF(
-        HashUtils.hash(password.value),
-        InvalidPassword
-      ) // TODO must validate password size, format
-      passwordInfo = PasswordValidationInfo(hash)
-      player <- EitherT(playerRepository.insertPlayer(username, passwordInfo))
+      hash         <- EitherT.fromOptionF(HashUtils.hash(password.value), InvalidPassword)
+      passwordInfo <- EitherT.fromOption(PasswordValidationInfo(hash), InvalidPassword)
+      player       <- EitherT(playerRepository.insertPlayer(username, passwordInfo))
       _ <- EitherT.liftF[F, PlayerRepositoryError, Unit](
         Logger[F].info(s"Created player: ${username.value} with id: ${player.id.value}")
       )
@@ -35,6 +32,7 @@ class PlayerService[F[_]: Async](private val playerRepository: PlayerRepository[
       player   <- EitherT.fromOptionF(playerRepository.findPlayerByUsername(username), PlayerNotFound)
       hash     <- EitherT.fromOptionF(HashUtils.hash(password), InvalidPassword)
       password <- EitherT.fromOptionF(playerRepository.findPlayerPassword(player.id), PlayerNotFound)
+      _        <- EitherT.cond[F](hash == password.value, password, WrongPassword)
       _        <- if (password.value == hash) EitherT.liftF(Async[F].unit) else EitherT.leftT(InvalidPassword)
       now      <- EitherT.liftF(Async[F].realTimeInstant)
       uuid     <- EitherT.liftF(IdGenerator.generateUUID)

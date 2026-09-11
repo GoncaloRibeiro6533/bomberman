@@ -96,8 +96,8 @@ object Game {
 
     def processBombPlanting(id: PlayerId, instant: Instant): Either[String, GameRunning] = {
       for {
-        player <- activePlayers.find(_.id == id).toRight("player is dead. cannot plant bomb")
-        _      <- Either.cond(canPlantBomb(player), (), "player does not have remaining bombs§")
+        player <- activePlayers.find(_.id == id).toRight("player is dead. cannot plant a bomb")
+        _      <- Either.cond(canPlantBomb(player), (), "player has no bombs left")
         bombId                      = BombId(UUID.randomUUID())
         updatedPlayerBombs          = updatePlayerBombs(player, bombCount = BombCount.Zero)
         updatedGameBombs: Set[Bomb] = bombs + Bomb(bombId, player.cell, id, instant)

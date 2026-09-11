@@ -70,7 +70,6 @@ object ClientApp extends IOApp {
   private def sendCommand(client: WSConnectionHighLevel[IO], playerId: PlayerId): IO[Unit] =
     for {
       cmd <- KeyboardReader.readCommand[IO](playerId)
-      _   <- IO.println(cmd.asJson.noSpaces)
       _   <- client.send(WSFrame.Text(cmd.asJson.noSpaces))
       _   <- sendCommand(client, playerId)
     } yield ()
@@ -118,8 +117,8 @@ object ClientApp extends IOApp {
     for {
       option <- menuLogged
       _ <- option match {
-        case 1  => listGames(player, client)
-        case 2  => createGame(player, client)
+        case 1  => listGames(player, client, ref)
+        case 2  => createGame(player, client, ref)
         case 3  => joinGame(player)
         case 99 => logout(client, player, ref)
         case _  => IO.println("Invalid option")
@@ -142,36 +141,43 @@ object ClientApp extends IOApp {
   }
 
   private def makeRequest[I: Encoder, O: Decoder](
+      player: Ref[IO, Option[AuthPlayer]],
       client: Client[IO],
       uri: Uri,
       method: Method,
       body: Option[I] = None,
       headers: Option[Headers] = None
   ): IO[Option[O]] = method match {
-    case GET    => handleResponse[O](client, addHeadersAndBody[I](GET, uri, body, headers))
-    case POST   => handleResponse[O](client, addHeadersAndBody[I](POST, uri, body, headers))
-    case DELETE => handleResponse[O](client, addHeadersAndBody[I](DELETE, uri, body, headers))
+    case GET    => handleResponse[O](player, client, addHeadersAndBody[I](GET, uri, body, headers))
+    case POST   => handleResponse[O](player, client, addHeadersAndBody[I](POST, uri, body, headers))
+    case DELETE => handleResponse[O](player, client, addHeadersAndBody[I](DELETE, uri, body, headers))
     case _      => IO.pure(None)
   }
 
-  private def handleResponse[O: Decoder](client: Client[IO], request: Request[IO]): IO[Option[O]] = {
-    val res: IO[Either[String, O]] = client.run(request).use { (response: Response[IO]) =>
-      response.bodyText.compile.string.map { bodyString =>
-        if (response.status.isSuccess) {
-          decode[O](bodyString) match {
-            case Left(_)      => "".asLeft
-            case Right(value) => value.asRight
+  private def handleResponse[O: Decoder](
+      player: Ref[IO, Option[AuthPlayer]],
+      client: Client[IO],
+      request: Request[IO]
+  ): IO[Option[O]] = {
+    val res: IO[Either[String, O]] =
+      client.run(request).use { response =>
+        response.bodyText.compile.string.flatMap { bodyString =>
+          if (response.status.isSuccess) {
+            decode[O](bodyString) match {
+              case Left(_)      => IO.pure("".asLeft[O])
+              case Right(value) => IO.pure(value.asRight[String])
+            }
+          } else if (response.status == Status.Unauthorized) {
+            player.set(None).as("Unauthorized".asLeft[O])
+          } else {
+            IO.pure(bodyString.asLeft[O])
           }
-        } else bodyString.asLeft // TODO if 401 return to menu not logged
+        }
       }
-    }
     for {
       content <- res
       result <- content match {
-        case Left(value) =>
-          for {
-            _ <- IO.println(value.filterNot(_ == '"'))
-          } yield None
+        case Left(value)  => IO.println(value.filterNot(_ == '"')).as(None)
         case Right(value) => IO.pure(Some(value))
       }
     } yield result
@@ -198,6 +204,7 @@ object ClientApp extends IOApp {
       password <- OptionT.fromOption[IO](PasswordIn(line2))
       _ <- OptionT(
         makeRequest[PlayerCredentials, IdlePlayer](
+          playerRef,
           client,
           uri = uri / "player",
           POST,
@@ -231,6 +238,7 @@ object ClientApp extends IOApp {
     val res = for {
       player <- OptionT(
         makeRequest[PlayerCredentials, AuthPlayer](
+          playerRef,
           client,
           uri / "player" / "login",
           POST,
@@ -244,19 +252,26 @@ object ClientApp extends IOApp {
   }
 
   private def logout(client: Client[IO], player: AuthPlayer, ref: Ref[IO, Option[AuthPlayer]]): IO[Unit] = for {
-    _ <- makeRequest[Unit, Unit](client, uri / "player" / "logout", POST, headers = generateAuthHeader(player).some)
+    _ <- makeRequest[Unit, Unit](
+      ref,
+      client,
+      uri / "player" / "logout",
+      POST,
+      headers = generateAuthHeader(player).some
+    )
     _ <- ref.set(None)
   } yield ()
 
-  private def createGame(player: AuthPlayer, client: Client[IO]): IO[Unit] = {
+  private def createGame(player: AuthPlayer, client: Client[IO], ref: Ref[IO, Option[AuthPlayer]]): IO[Unit] = {
     val res = for {
       _ <- OptionT.liftF(IO.println("Creating game"))
       res <- OptionT(
         makeRequest[GameRequest, GameResponse](
+          ref,
           client,
           uri / "game",
           POST,
-          GameRequest(1).some,
+          GameRequest(2).some,
           generateAuthHeader(player).some
         )
       )
@@ -266,10 +281,11 @@ object ClientApp extends IOApp {
     res.value.void
   }
 
-  private def listGames(player: AuthPlayer, client: Client[IO]): IO[Unit] =
+  private def listGames(player: AuthPlayer, client: Client[IO], ref: Ref[IO, Option[AuthPlayer]]): IO[Unit] =
     for {
       _ <- IO.println("Getting games")
       res <- makeRequest[Unit, GamesResponse](
+        ref,
         client,
         uri / "game" / "all",
         GET,

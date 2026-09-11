@@ -25,6 +25,7 @@ case object InvalidUUID          extends PlayerRepositoryError
 case object NoToken              extends PlayerRepositoryError
 case object Unauthorized         extends PlayerRepositoryError
 case object InvalidPassword      extends PlayerRepositoryError
+case object WrongPassword        extends PlayerRepositoryError
 
 class PlayerRepositoryInMem[F[_]: Async](
     private val players: Ref[F, Map[PlayerId, IdlePlayer]],
