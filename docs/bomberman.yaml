@@ -1,0 +1,129 @@
+openapi: 3.0.0
+info:
+  title: bomberman
+  version: 1.0.0
+paths:
+  /game:
+    post:
+      summary: Create game
+      operationId: users_gribeiro_documents_bruno_bomberman_create_game_yml
+      description: ''
+      tags:
+        - ''
+      responses:
+        '200':
+          description: ''
+      requestBody:
+        $ref: '#/components/requestBodies/create_game'
+      security:
+        - create_game: []
+      servers:
+        - url: http://localhost:9001
+  /game/all:
+    get:
+      summary: Get all games
+      operationId: users_gribeiro_documents_bruno_bomberman_get_all_games_yml
+      description: ''
+      tags:
+        - ''
+      responses:
+        '200':
+          description: ''
+      parameters:
+        - name: Authorization
+          in: header
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - get_all_games: []
+      servers:
+        - url: http://localhost:9001
+  /player:
+    post:
+      summary: Create player
+      operationId: users_gribeiro_documents_bruno_bomberman_create_player_yml
+      description: ''
+      tags:
+        - ''
+      responses:
+        '200':
+          description: ''
+      requestBody:
+        $ref: '#/components/requestBodies/create_player'
+      servers:
+        - url: http://localhost:9001
+  /player/login:
+    post:
+      summary: Login
+      operationId: users_gribeiro_documents_bruno_bomberman_login_yml
+      description: ''
+      tags:
+        - ''
+      responses:
+        '200':
+          description: ''
+      requestBody:
+        $ref: '#/components/requestBodies/login'
+      servers:
+        - url: http://localhost:9001
+servers: []
+components:
+  schemas:
+    create_game:
+      type: object
+      properties:
+        nPlayers:
+          type: integer
+      example:
+        nPlayers: 2
+    create_player:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      example:
+        username: srfr
+        password: bananabanana
+    login:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      example:
+        username: srfr
+        password: bananabanana
+  requestBodies:
+    create_game:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/create_game'
+      description: ''
+      required: true
+    create_player:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/create_player'
+      description: ''
+      required: true
+    login:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/login'
+      description: ''
+      required: true
+  securitySchemes:
+    create_game:
+      type: http
+      scheme: bearer
+    get_all_games:
+      type: http
+      scheme: bearer

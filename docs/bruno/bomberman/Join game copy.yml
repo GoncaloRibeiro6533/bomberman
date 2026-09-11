@@ -1,0 +1,28 @@
+info:
+  name: Join game copy
+  type: websocket
+  seq: 6
+
+websocket:
+  url: "{{BASE_URI_WS}}/game/1a6321fd-35de-42a0-b5d9-a827fab94385/join/687850a0-de50-4585-ac2f-ab100f4b161e"
+  message:
+    - title: message 1
+      selected: false
+      message:
+        type: json
+        data: |-
+          {
+            "Movement": {
+              "playerId": {
+                "value": "e71b8494-86cd-4767-8e7f-63512a174f32"
+              },
+              "direction": {
+                "Right": {}
+              }
+            }
+          }
+  auth: inherit
+
+settings:
+  timeout: 0
+  keepAliveInterval: 0

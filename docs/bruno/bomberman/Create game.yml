@@ -1,0 +1,24 @@
+info:
+  name: Create game
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{BASE_URI}}/game"
+  body:
+    type: json
+    data: |-
+      {
+        "nPlayers": 2
+      }
+  auth:
+    type: bearer
+    token: c693ab60-84e9-4a38-9fbe-c39d6e3c0acb
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

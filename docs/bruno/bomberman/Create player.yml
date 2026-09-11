@@ -1,0 +1,23 @@
+info:
+  name: Create player
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{BASE_URI}}/player"
+  body:
+    type: json
+    data: |-
+      {
+        "username": "srfr",
+        "password": "bananabanana"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

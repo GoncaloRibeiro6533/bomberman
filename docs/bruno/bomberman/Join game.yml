@@ -1,0 +1,18 @@
+info:
+  name: Join game
+  type: websocket
+  seq: 3
+
+websocket:
+  url: "{{BASE_URI}}/game/782e1695-7ec7-445d-ad52-8a2febd68006/join/4faaee1b-5ed8-453e-a37c-29194bda369c"
+  message:
+    - title: message 1
+      selected: false
+      message:
+        type: json
+        data: ""
+  auth: inherit
+
+settings:
+  timeout: 0
+  keepAliveInterval: 0

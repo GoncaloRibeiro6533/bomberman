@@ -1,0 +1,11 @@
+name: bomberman_testing
+variables:
+  - name: PORT
+    value: "9001"
+    description: ""
+  - name: BASE_URI
+    value: http://localhost:{{PORT}}
+    description: ""
+  - name: BASE_URI_WS
+    value: ws://localhost:{{PORT}}
+    description: ""
