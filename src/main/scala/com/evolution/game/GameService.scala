@@ -4,17 +4,23 @@ import cats.data.EitherT
 import cats.effect.kernel.Async
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
+import com.evolution.game.Game.*
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 class GameService[F[_]: Async](
     private val repository: GameRepository[F],
     private val websocketService: WebsocketService[F]
 ) {
 
+  implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
+
   def createGame(nPlayers: PositiveNumber): F[GameWaiting] = {
     val res = for {
       game <- repository.insertGame(nPlayers)
       loop <- createLoop(gameWaiting = game)
       _    <- repository.insertGameLoop(game.id, loop)
+      _ <- Logger[F].info(s"Game created with id: ${game.id.id}")
     } yield game
     res
   }
@@ -31,6 +37,7 @@ class GameService[F[_]: Async](
     val res: EitherT[F, GameRepositoryError, Unit] = for {
       actor <- EitherT(repository.getGameLoop(gameId))
       _     <- EitherT.right(actor.publishCommand(command))
+      _ <- EitherT.liftF(Logger[F].info(s"Sent command: $command"))
     } yield ()
     res.value
   }

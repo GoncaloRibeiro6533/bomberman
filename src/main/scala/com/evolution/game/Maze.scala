@@ -17,9 +17,13 @@ final case class Maze(width: Int, height: Int, cells: Set[Position]) {
     (position: Position) => position.toChar
   }
 
-  def toPrintable(playerCell: Cell): List[String] = toString {
-    position => if (position.cellType == PlayerPosition && position.cell != playerCell) 'O' else
-      position.toChar
+  def toPrintable(player: Option[ActivePlayer]): List[String] = toString { position =>
+    if(position.cellType == PlayerPosition){
+      player match {
+        case Some(value) if position.cell == value.cell =>  position.toChar
+        case _ => 'O'
+      }
+    } else position.toChar
   }
 
 

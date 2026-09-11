@@ -1,6 +1,7 @@
 package com.evolution.game
 
 import com.evolution.cell.PositiveNumber
+import com.evolution.game.Game.*
 
 trait GameRepository[F[_]] {
   def findGame(gameId: GameId): F[Option[Game]]

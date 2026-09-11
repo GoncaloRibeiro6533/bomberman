@@ -3,6 +3,7 @@ package com.evolution.game
 import cats.effect.*
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
+import com.evolution.game.Game.*
 import com.evolution.game.GameRepositoryError.*
 import com.evolution.util.IdGenerator
 

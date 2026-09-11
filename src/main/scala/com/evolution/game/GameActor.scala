@@ -6,6 +6,7 @@ import cats.effect.kernel.{Async, Outcome}
 import cats.effect.std.Queue
 import cats.implicits.*
 import com.evolution.game.Command.*
+import com.evolution.game.Game.*
 import com.evolution.player.PlayerId
 
 import java.time.Instant
@@ -57,11 +58,15 @@ class GameActor[F[_]: Async](
             val newGameState = gameRunning.triggerBombs(instant)
             broadcastState(newGameState) as newGameState
           case Command.Movement(playerId, direction) =>
-            val newGameState = gameRunning.processMovement(playerId, direction)
-            broadcastState(newGameState) as newGameState
+            gameRunning.processMovement(playerId, direction) match {
+              case Left(error) => websocketService.send(playerId, error) as game
+              case Right(newGameState) => broadcastState(newGameState) as newGameState
+            }
           case Command.PlantBomb(playerId) =>
-            val newGameState = gameRunning.processBombPlanting(playerId, instant)
-            broadcastState(newGameState) as newGameState
+            gameRunning.processBombPlanting(playerId, instant) match {
+              case Left(error) => websocketService.send(playerId, error) as game
+              case Right(newGameState) => broadcastState(newGameState) as newGameState
+            }
           case Command.Join(player) =>
             websocketService.disconnect(player.id, "Game is already running") as gameRunning
         }
@@ -71,7 +76,6 @@ class GameActor[F[_]: Async](
         allPlayers.toVector.traverseVoid(websocketService.disconnect(_, "Game Finished")) *>
           onComplete(gameFinished) as gameFinished
     }
-    // TODO do not ignore the commands, it must have a response
   }
 
   def publishCommand(cmd: Command): F[Unit] = queue.offer(cmd)

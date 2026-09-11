@@ -10,6 +10,8 @@ import io.circe.{Decoder, Encoder}
 import org.http4s.Response
 import org.http4s.server.websocket.WebSocketBuilder2
 import org.http4s.websocket.WebSocketFrame
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 import scodec.bits.ByteVector
 
 import scala.concurrent.duration.DurationInt
@@ -38,6 +40,7 @@ class WebsocketServiceImpl[F[_]: Async](
             case None       => (currentState, None)
           }
         }
+      _ <- Logger[F].info(s"Player with id: ${playerId.value} disconnected")
       _ <- playerConnections match {
         case Some(queue) => WebSocketFrame.Close(1000, reason).traverseVoid(frame => queue.offer(frame))
         case None        => Async[F].unit
@@ -54,6 +57,10 @@ class WebsocketServiceImpl[F[_]: Async](
     }
   } yield ()
 
+  implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
+
+
+
   override def connect[A: Decoder](
       playerId: PlayerId,
       webSocketBuilder2: WebSocketBuilder2[F],
@@ -62,6 +69,7 @@ class WebsocketServiceImpl[F[_]: Async](
     for {
       queue <- Queue.bounded[F, WebSocketFrame](10)
       _     <- connections.modify(currentConnections => (currentConnections.updated(playerId, queue), ()))
+      _ <- Logger[F].info(s"Player with id: ${playerId.value} connected")
       response <- webSocketBuilder2
         .withOnClose(disconnect(playerId, "connection closed abruptly"))
         .build(
@@ -73,8 +81,10 @@ class WebsocketServiceImpl[F[_]: Async](
           receive = _.evalMap { frame =>
             handleFrame(
               frame = frame,
-              onError = { () =>
-                WebSocketFrame.Close(1000, "could not parse message").traverseVoid(frame => queue.offer(frame))
+              onError = { () => for {
+                 _ <- Logger[F].info(s"Failed to parse message: $frame from player with id: ${playerId.value}")
+                  _ <- queue.offer(WebSocketFrame.Text("could not parse message"))
+                } yield ()
               },
               onMessage = onMessage,
               onPing = { uuid =>
