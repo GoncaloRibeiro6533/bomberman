@@ -29,15 +29,14 @@ class PlayerService[F[_]: Async](private val playerRepository: PlayerRepository[
 
   def login(username: Username, password: String): F[Either[PlayerRepositoryError, AuthPlayer]] = {
     val res: EitherT[F, PlayerRepositoryError, AuthPlayer] = for {
-      player   <- EitherT.fromOptionF(playerRepository.findPlayerByUsername(username), PlayerNotFound)
-      hash     <- EitherT.fromOptionF(HashUtils.hash(password), InvalidPassword)
-      password <- EitherT.fromOptionF(playerRepository.findPlayerPassword(player.id), PlayerNotFound)
-      _        <- EitherT.cond[F](hash == password.value, password, WrongPassword)
-      _        <- if (password.value == hash) EitherT.liftF(Async[F].unit) else EitherT.leftT(InvalidPassword)
-      now      <- EitherT.liftF(Async[F].realTimeInstant)
-      uuid     <- EitherT.liftF(IdGenerator.generateUUID)
-      token    <- EitherT.liftF(playerRepository.createToken(now, TokenInfo(uuid), player))
-      _        <- EitherT.liftF(Logger[F].info(s"Created token for: ${username.value} with id: ${player.id.value}"))
+      player         <- EitherT.fromOptionF(playerRepository.findPlayerByUsername(username), PlayerNotFound)
+      hash           <- EitherT.fromOptionF(HashUtils.hash(password), InvalidPassword)
+      storedPassword <- EitherT.fromOptionF(playerRepository.findPlayerPassword(player.id), PlayerNotFound)
+      _              <- EitherT.cond[F](hash == storedPassword.value, (), WrongPassword)
+      now            <- EitherT.liftF(Async[F].realTimeInstant)
+      uuid           <- EitherT.liftF(IdGenerator.generateUUID)
+      token          <- EitherT.liftF(playerRepository.createToken(now, TokenInfo(uuid), player))
+      _ <- EitherT.liftF(Logger[F].info(s"Created token for: ${username.value} with id: ${player.id.value}"))
     } yield AuthPlayer(player = player, token = token)
     res.value
   }

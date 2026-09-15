@@ -70,8 +70,8 @@ object GameController {
             for {
               joinRes <- gameService.sendCommand(GameId(gameId), Command.Join(value))
               _ <- joinRes match {
-                case Left(error)  => websocketService.disconnect(value.id, error.message)
-                case Right(_) => Async[F].unit
+                case Left(error) => websocketService.disconnect(value.id, error.message)
+                case Right(_)    => Async[F].unit
               }
             } yield ()
           case None => websocketService.disconnect(PlayerId(playerId), "Player not found")

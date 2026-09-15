@@ -2,7 +2,7 @@ package com.evolution.player
 
 import cats.data.EitherT
 import cats.effect.Ref
-import cats.effect.kernel.Async
+import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all.*
 import com.evolution.player.Player.IdlePlayer
 import com.evolution.util.IdGenerator
@@ -27,7 +27,7 @@ case object Unauthorized         extends PlayerRepositoryError
 case object InvalidPassword      extends PlayerRepositoryError
 case object WrongPassword        extends PlayerRepositoryError
 
-class PlayerRepositoryInMem[F[_]: Async](
+class PlayerRepositoryInMem[F[_]: Async] private (
     private val players: Ref[F, Map[PlayerId, IdlePlayer]],
     private val tokens: Ref[F, Map[PlayerId, Token]],
     private val passwords: Ref[F, Map[PlayerId, PasswordValidationInfo]]
@@ -96,4 +96,19 @@ class PlayerRepositoryInMem[F[_]: Async](
 
   override def findPlayerPassword(playerId: PlayerId): F[Option[PasswordValidationInfo]] =
     passwords.get.map(_.get(playerId))
+}
+
+object PlayerRepositoryInMem {
+
+  def make[F[_]: Async]: Resource[F, PlayerRepositoryInMem[F]] =
+    for {
+      refs <- Resource.make(
+        for {
+          players   <- Ref[F].of(Map[PlayerId, IdlePlayer]().empty)
+          tokens    <- Ref[F].of(Map[PlayerId, Token]().empty)
+          passwords <- Ref[F].of(Map[PlayerId, PasswordValidationInfo]().empty)
+        } yield (players, tokens, passwords)
+      ) { _ => Async[F].unit }
+      (players, tokens, passwords) = refs
+    } yield new PlayerRepositoryInMem[F](players, tokens, passwords)
 }

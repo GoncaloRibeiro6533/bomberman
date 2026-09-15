@@ -1,6 +1,6 @@
 package com.evolution.game
 
-import cats.effect.kernel.{Async, Ref}
+import cats.effect.kernel.{Async, Ref, Resource}
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.player.PlayerId
@@ -26,7 +26,7 @@ trait WebsocketService[F[_]] {
   def send[A: Encoder](playerId: PlayerId, message: A): F[Unit]
 }
 
-class WebsocketServiceImpl[F[_]: Async](
+class WebsocketServiceImpl[F[_]: Async] private (
     private val connections: Ref[F, Map[PlayerId, Queue[F, WebSocketFrame]]]
 ) extends WebsocketService[F] {
 
@@ -113,4 +113,19 @@ class WebsocketServiceImpl[F[_]: Async](
       case WebSocketFrame.Ping(value) => onPing(value)
       case _                          => Async[F].unit
     }
+}
+
+object WebsocketServiceImpl {
+
+  def make[F[_]: Async]: Resource[F, WebsocketServiceImpl[F]] =
+    for {
+      connections <- Resource.make(Ref[F].of(Map[PlayerId, Queue[F, WebSocketFrame]]().empty)) { stateRef =>
+        for {
+          map <- stateRef.get
+          _ <- map.values.toVector.traverseVoid(queue =>
+            WebSocketFrame.Close(1000, "server shut down").traverseVoid(frame => queue.offer(frame))
+          )
+        } yield ()
+      }
+    } yield new WebsocketServiceImpl[F](connections)
 }

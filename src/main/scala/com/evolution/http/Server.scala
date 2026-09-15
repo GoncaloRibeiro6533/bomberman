@@ -2,7 +2,6 @@ package com.evolution.http
 
 import cats.data.{Kleisli, NonEmptyList, OptionT}
 import cats.effect.*
-import cats.effect.std.Queue
 import cats.implicits.toSemigroupKOps
 import com.comcast.ip4s.*
 import com.evolution.game.{GameRepositoryInMem, GameService, WebsocketService, WebsocketServiceImpl}
@@ -14,10 +13,9 @@ import org.http4s.headers.`WWW-Authenticate`
 import org.http4s.server.AuthMiddleware
 import org.http4s.server.middleware.ErrorHandling
 import org.http4s.server.websocket.WebSocketBuilder2
-import org.http4s.websocket.WebSocketFrame
 import org.http4s.{AuthedRoutes, Challenge, HttpApp, HttpRoutes}
 
-object Server extends IOApp {
+object Server extends ResourceApp.Forever {
 
   private def httpApp(
       gameService: GameService[IO],
@@ -64,27 +62,20 @@ object Server extends IOApp {
       middleware(authRoutes)
   }
 
-  override def run(args: List[String]): IO[ExitCode] = {
-    GameRepositoryInMem.make[IO].use { repo =>
-      for {
-        players     <- Ref[IO].of(Map[PlayerId, IdlePlayer]().empty)
-        tokens      <- Ref[IO].of(Map[PlayerId, Token]().empty)
-        passwords   <- Ref[IO].of(Map[PlayerId, PasswordValidationInfo]().empty)
-        connections <- Ref[IO].of(Map[PlayerId, Queue[IO, WebSocketFrame]]().empty)
-        websocketService = new WebsocketServiceImpl[IO](connections)
-        playerRepo       = new PlayerRepositoryInMem[IO](players, tokens, passwords)
-        playerService    = new PlayerService[IO](playerRepo)
-        gameService      = new GameService[IO](repo, websocketService)
-        app <- httpApp(gameService, playerService, websocketService)
-        exitCode <- EmberServerBuilder
-          .default[IO]
-          .withHost(ipv4"127.0.0.1")
-          .withPort(port"9001")
-          .withHttpWebSocketApp(wsb => app(wsb))
-          .build
-          .use(_ => IO.never)
-          .as(ExitCode.Success)
-      } yield exitCode
-    }
+  override def run(args: List[String]): Resource[IO, Unit] = {
+    for {
+      websocketService <- WebsocketServiceImpl.make[IO]
+      playerRepo       <- PlayerRepositoryInMem.make[IO]
+      gameRepo         <- GameRepositoryInMem.make[IO]
+      playerService = new PlayerService[IO](playerRepo)
+      gameService   = new GameService[IO](gameRepo, websocketService)
+      app <- Resource.eval(httpApp(gameService, playerService, websocketService))
+      _ <- EmberServerBuilder
+        .default[IO]
+        .withHost(host"127.0.0.1")
+        .withPort(port"9001")
+        .withHttpWebSocketApp(wsb => app(wsb))
+        .build
+    } yield ()
   }
 }
