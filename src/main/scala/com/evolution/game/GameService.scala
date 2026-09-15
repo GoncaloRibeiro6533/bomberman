@@ -5,6 +5,7 @@ import cats.effect.kernel.Async
 import cats.syntax.all.*
 import com.evolution.cell.PositiveNumber
 import com.evolution.game.Game.*
+import com.evolution.websocket.WebsocketService
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -37,7 +38,6 @@ class GameService[F[_]: Async](
     val res: EitherT[F, GameRepositoryError, Unit] = for {
       actor <- EitherT(repository.getGameLoop(gameId))
       _     <- EitherT.right(actor.publishCommand(command))
-      _     <- EitherT.liftF(Logger[F].info(s"Sent command: $command"))
     } yield ()
     res.value
   }

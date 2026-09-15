@@ -7,6 +7,7 @@ import com.evolution.game.GameRepositoryError.{GameAlreadyFull, PlayerAlreadyInG
 import com.evolution.game.*
 import com.evolution.player.Player.IdlePlayer
 import com.evolution.player.{PlayerId, PlayerService}
+import com.evolution.websocket.{WebsocketMessage, WebsocketService}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.server.websocket.WebSocketBuilder2
 import org.http4s.{AuthedRoutes, HttpRoutes, Response}
@@ -49,32 +50,32 @@ object GameRoutes {
   )(wsb: WebSocketBuilder2[F]): HttpRoutes[F] = {
     val dsl = Http4sDsl[F]
     import dsl.*
-    HttpRoutes.of[F] { case GET -> Root / "game" / UUIDVar(gameId) / "join" / UUIDVar(playerId) =>
+    HttpRoutes.of[F] { case GET -> Root / "game" / GameId.Var(gameId) / "join" / PlayerId.Var(playerId) =>
       for {
-        response <- websocketService.connect[Command](
-          PlayerId(playerId),
+        response <- websocketService.connect[WebsocketMessage](
+          playerId,
           wsb,
-          onMessage = { cmd =>
+          onMessage = { msg =>
             for {
-              commandRes <- gameService.sendCommand(GameId(gameId), cmd)
+              commandRes <- gameService.sendCommand(gameId, msg.toCommand(playerId))
               _ <- commandRes match {
-                case Left(value) => websocketService.disconnect(PlayerId(playerId), value.message)
+                case Left(value) => websocketService.disconnect(playerId, value.message)
                 case Right(_)    => Async[F].unit
               }
             } yield ()
           }
         )
-        player <- playerService.getPlayer(PlayerId(playerId))
+        player <- playerService.getPlayer(playerId)
         _ <- player match {
           case Some(value) =>
             for {
-              joinRes <- gameService.sendCommand(GameId(gameId), Command.Join(value))
+              joinRes <- gameService.sendCommand(gameId, Command.Join(value))
               _ <- joinRes match {
                 case Left(error) => websocketService.disconnect(value.id, error.message)
                 case Right(_)    => Async[F].unit
               }
             } yield ()
-          case None => websocketService.disconnect(PlayerId(playerId), "Player not found")
+          case None => websocketService.disconnect(playerId, "Player not found")
         }
       } yield response
     }

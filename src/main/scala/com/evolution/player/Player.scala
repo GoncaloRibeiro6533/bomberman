@@ -5,9 +5,17 @@ import com.evolution.cell.Cell
 import io.circe.generic.JsonCodec
 
 import java.util.UUID
+import scala.util.Try
 
 @JsonCodec
 case class PlayerId(value: UUID) extends AnyVal
+
+object PlayerId {
+
+  object Var {
+    def unapply(value: String): Option[PlayerId] = Try(UUID.fromString(value)).toOption.map(uuid => PlayerId(uuid))
+  }
+}
 
 @JsonCodec
 sealed trait Player {

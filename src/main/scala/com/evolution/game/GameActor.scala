@@ -8,6 +8,7 @@ import cats.implicits.*
 import com.evolution.game.Command.*
 import com.evolution.game.Game.*
 import com.evolution.player.PlayerId
+import com.evolution.websocket.WebsocketService
 
 import java.time.Instant
 import scala.concurrent.duration.DurationInt

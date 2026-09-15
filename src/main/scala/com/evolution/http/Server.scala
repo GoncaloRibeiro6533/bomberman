@@ -4,9 +4,10 @@ import cats.data.{Kleisli, NonEmptyList, OptionT}
 import cats.effect.*
 import cats.implicits.toSemigroupKOps
 import com.comcast.ip4s.*
-import com.evolution.game.{GameRepositoryInMem, GameService, WebsocketService, WebsocketServiceImpl}
+import com.evolution.game.{GameRepositoryInMem, GameService}
 import com.evolution.player.*
 import com.evolution.player.Player.IdlePlayer
+import com.evolution.websocket.{WebsocketService, WebsocketServiceImpl}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.headers.`WWW-Authenticate`
