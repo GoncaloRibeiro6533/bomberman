@@ -1,3 +1,5 @@
+package bomb
+
 import com.evolution.bomb.{Bomb, BombId}
 import com.evolution.cell.{Cell, Column, Line, PositiveNumber}
 import com.evolution.player.PlayerId

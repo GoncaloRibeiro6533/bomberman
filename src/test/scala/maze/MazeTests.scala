@@ -1,7 +1,9 @@
+package maze
+
 import com.evolution.cell.CellType.PlayerPosition
 import com.evolution.game.Maze
-import com.evolution.player.Player.*
 import com.evolution.player.*
+import com.evolution.player.Player.*
 import org.scalatest.OptionValues
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.must.Matchers.be
@@ -29,9 +31,9 @@ class MazeTests extends AnyFreeSpec with OptionValues {
       val maze        = Maze(map)
       val uuidPlayer1 = UUID.randomUUID()
       val uuidPlayer2 = UUID.randomUUID()
-      val players = List(
-        JoiningPlayer(PlayerId(uuidPlayer1), Username("Bob1").value, Score.Zero),
-        JoiningPlayer(PlayerId(uuidPlayer2), Username("Alice").value, Score.Zero)
+      val players = Set(
+        JoiningPlayer(PlayerId(uuidPlayer1), Username("Bob1").value),
+        JoiningPlayer(PlayerId(uuidPlayer2), Username("Alice").value)
       )
       val sut =
         maze.insertPlayers(players)
@@ -43,10 +45,10 @@ class MazeTests extends AnyFreeSpec with OptionValues {
 
     "insert players in map should insert same number of players as available positions" in {
       val maze = Maze(map)
-      val players = List(
-        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value, Score.Zero),
-        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value, Score.Zero),
-        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("John").value, Score.Zero)
+      val players = Set(
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("John").value)
       )
       val sut =
         maze.insertPlayers(players)
@@ -56,9 +58,9 @@ class MazeTests extends AnyFreeSpec with OptionValues {
 
     "insert players in map should insert players on available positions" in {
       val maze = Maze(map)
-      val players = List(
-        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value, Score.Zero),
-        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value, Score.Zero)
+      val players = Set(
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Bob1").value),
+        JoiningPlayer(PlayerId(UUID.randomUUID()), Username("Alice").value)
       )
       val sut =
         maze.insertPlayers(players)

@@ -1,6 +1,7 @@
-import com.evolution.cell.{Column, Line}
+package cell
+
+import com.evolution.cell.{Cell, Column, Line, PositiveNumber}
 import com.evolution.direction.Direction.*
-import com.evolution.cell.{Cell, PositiveNumber}
 import org.scalatest.OptionValues
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.matchers.should.Matchers
