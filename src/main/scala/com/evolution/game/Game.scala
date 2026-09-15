@@ -122,7 +122,7 @@ object Game {
         if (bombsToDetonate.nonEmpty) {
           val bombsWithAffectedCells: Map[Bomb, Set[Cell]] =
             bombsToDetonate.foldRight(Map[Bomb, Set[Cell]]().empty)((bomb, map) =>
-              map.updated(bomb, cellsInRadius(bomb.cell, bomb.radius.value))
+              map.updated(bomb, cellsInRadius(this.getPositions, bomb.cell, bomb.radius.value))
             )
           val remainingBlocks                          = blocks.diff(bombsWithAffectedCells.values.flatten.toSet)
           val killedPlayers: Map[ActivePlayer, Killer] = getKilledPlayers(activePlayers, bombsWithAffectedCells)
@@ -251,14 +251,17 @@ object Game {
       !walls.contains(value) && !blocks.contains(value) && !bombs.exists(_.cell == value)
     }
 
-    private def cellsInRadius(center: Cell, radius: Int): Set[Cell] = {
+    private def cellsInRadius(positions: Set[Position], center: Cell, radius: Int): Set[Cell] = {
       @tailrec
       def getCells(cells: Set[Cell], center: Cell, radius: Int, direction: Direction): Set[Cell] = {
         if (radius == 0) cells
         else {
           center + direction match {
             case Some(value) =>
-              getCells(cells + value, value, radius - 1, direction)
+              positions.find(_.cell == value) match {
+                case Some(newPos) if newPos.cellType == Wall => cells
+                case _ =>  getCells(cells + value, value, radius - 1, direction)
+              }
             case None =>
               cells
           }
