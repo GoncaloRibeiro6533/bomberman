@@ -18,17 +18,17 @@ import scala.concurrent.duration.DurationInt
 
 trait WebsocketService[F[_]] {
   def connect[A: Decoder](
-      playerId: PlayerId,
-      webSocketBuilder2: WebSocketBuilder2[F],
-      onMessage: A => F[Unit]
-  ): F[Response[F]]
+                           playerId: PlayerId,
+                           webSocketBuilder2: WebSocketBuilder2[F],
+                           onMessage: A => F[Unit]
+                         ): F[Response[F]]
   def disconnect(playerId: PlayerId, reason: String): F[Unit]
   def send[A: Encoder](playerId: PlayerId, message: A): F[Unit]
 }
 
 class WebsocketServiceImpl[F[_]: Async] private (
-    private val connections: Ref[F, Map[PlayerId, Queue[F, WebSocketFrame]]]
-) extends WebsocketService[F] {
+                                                  private val connections: Ref[F, Map[PlayerId, Queue[F, WebSocketFrame]]]
+                                                ) extends WebsocketService[F] {
 
   override def disconnect(playerId: PlayerId, reason: String): F[Unit] = {
     for {
@@ -40,9 +40,12 @@ class WebsocketServiceImpl[F[_]: Async] private (
             case None       => (currentState, None)
           }
         }
-      _ <- Logger[F].info(s"Player with id: ${playerId.value} disconnected")
       _ <- playerConnections match {
-        case Some(queue) => WebSocketFrame.Close(1000, reason).traverseVoid(frame => queue.offer(frame))
+        case Some(queue) =>
+          for {
+            _ <- WebSocketFrame.Close(1000, reason).traverseVoid(frame => queue.offer(frame))
+            _ <- Logger[F].info(s"Player with id: ${playerId.value} disconnected")
+          } yield ()
         case None        => Async[F].unit
       }
     } yield ()
@@ -60,14 +63,12 @@ class WebsocketServiceImpl[F[_]: Async] private (
   implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
 
   override def connect[A: Decoder](
-      playerId: PlayerId,
-      webSocketBuilder2: WebSocketBuilder2[F],
-      onMessage: A => F[Unit]
-  ): F[Response[F]] =
+                                    playerId: PlayerId,
+                                    webSocketBuilder2: WebSocketBuilder2[F],
+                                    onMessage: A => F[Unit]
+                                  ): F[Response[F]] =
     for {
       queue <- Queue.bounded[F, WebSocketFrame](10)
-      _     <- connections.modify(currentConnections => (currentConnections.updated(playerId, queue), ()))
-      _     <- Logger[F].info(s"Player with id: ${playerId.value} connected")
       response <- webSocketBuilder2
         .withOnClose(disconnect(playerId, "connection closed abruptly"))
         .build(
@@ -92,17 +93,20 @@ class WebsocketServiceImpl[F[_]: Async] private (
             )
           }
         )
+      _     <- disconnect(playerId, "establishing new connection")
+      _     <- connections.modify(currentConnections => (currentConnections.updated(playerId, queue), ()))
+      _     <- Logger[F].info(s"Player with id: ${playerId.value} connected")
     } yield response
 
   private def parseCommand[A: Decoder](json: String): Option[A] =
     decode[A](json).toOption
 
   private def handleFrame[A: Decoder](
-      frame: WebSocketFrame,
-      onError: () => F[Unit],
-      onMessage: A => F[Unit],
-      onPing: ByteVector => F[Unit]
-  ): F[Unit] =
+                                       frame: WebSocketFrame,
+                                       onError: () => F[Unit],
+                                       onMessage: A => F[Unit],
+                                       onPing: ByteVector => F[Unit]
+                                     ): F[Unit] =
     frame match {
       case WebSocketFrame.Text(text, _) =>
         parseCommand[A](text) match {

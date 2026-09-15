@@ -11,7 +11,7 @@ import org.http4s.dsl.Http4sDsl
 import org.http4s.server.websocket.WebSocketBuilder2
 import org.http4s.{AuthedRoutes, HttpRoutes, Response}
 
-object GameController {
+object GameRoutes {
   import org.http4s.circe.CirceEntityCodec.*
 
   def gameRouteWithAuth[F[_]: Async](

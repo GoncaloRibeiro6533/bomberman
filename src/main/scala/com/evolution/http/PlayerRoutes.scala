@@ -5,27 +5,11 @@ import cats.effect.kernel.Async
 import cats.syntax.all.*
 import com.evolution.player.*
 import com.evolution.player.Player.IdlePlayer
-import fs2.hashing.{Hash, HashAlgorithm, Hashing}
-import fs2.{Chunk, Pipe}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.`WWW-Authenticate`
 import org.http4s.{AuthedRoutes, Challenge, HttpRoutes, Response}
 
-object HashUtils {
-
-  def hash[F[_]: Async](value: String): F[Option[String]] = {
-    val pipe: Pipe[F, Byte, Hash]       = Hashing.forSync[F].hash(HashAlgorithm.SHA256)
-    val stream: fs2.Stream[F, Byte]     = fs2.Stream.chunk(Chunk.array(value.getBytes))
-    val hashedPassword: F[Option[Hash]] = stream.through(pipe).compile.last
-    val res: F[Option[String]] = hashedPassword.map {
-      case Some(value) => Some(value.toString())
-      case None        => None
-    }
-    res
-  }
-}
-
-object PlayerController {
+object PlayerRoutes {
   import org.http4s.circe.CirceEntityCodec.*
 
   def playerRoute[F[_]: Async](

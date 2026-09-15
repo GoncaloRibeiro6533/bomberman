@@ -25,19 +25,19 @@ object Server extends ResourceApp.Forever {
     IO.pure { wsb =>
       ErrorHandling {
         Seq(
-          PlayerController.playerRoute(playerService),
-          GameController.gameRoutes[IO](playerService, gameService, websocketService)(wsb),
+          PlayerRoutes.playerRoute(playerService),
+          GameRoutes.gameRoutes[IO](playerService, gameService, websocketService)(wsb),
           authedKleisli(playerService, gameService)
         ).reduce(_ <+> _)
       }.orNotFound
     }
 
   private val gameRoutes: GameService[IO] => AuthedRoutes[IdlePlayer, IO] = { gameService =>
-    GameController.gameRouteWithAuth(gameService)
+    GameRoutes.gameRouteWithAuth(gameService)
   }
 
   private val playerAuthedRoutes: PlayerService[IO] => AuthedRoutes[IdlePlayer, IO] = { playerService =>
-    PlayerController.playerRouteAuthenticated(playerService)
+    PlayerRoutes.playerRouteAuthenticated(playerService)
   }
 
   private val onFailure: AuthedRoutes[PlayerRepositoryError, IO] = Kleisli { _ =>

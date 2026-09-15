@@ -2,9 +2,8 @@ package com.evolution.player
 
 import cats.data.EitherT
 import cats.effect.kernel.Async
-import com.evolution.http.HashUtils
 import com.evolution.player.Player.IdlePlayer
-import com.evolution.util.IdGenerator
+import com.evolution.util.{HashUtils, IdGenerator}
 import io.circe.generic.JsonCodec
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
