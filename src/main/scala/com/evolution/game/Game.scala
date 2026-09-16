@@ -45,6 +45,7 @@ object Game {
 
     def join(player: IdlePlayer, startedAt: Instant): Either[String, Game] = {
       if (players.size == nPlayers.value) scala.Left("Game is full")
+      else if (players.exists(_.id == player.id)) scala.Right(this)
       else {
         val newPlayers = players + player.toJoiningPlayer
         if (newPlayers.size == nPlayers.value) scala.Right(this.copy(players = newPlayers).start(startedAt))
@@ -260,7 +261,7 @@ object Game {
             case Some(value) =>
               positions.find(_.cell == value) match {
                 case Some(newPos) if newPos.cellType == Wall => cells
-                case _ =>  getCells(cells + value, value, radius - 1, direction)
+                case _                                       => getCells(cells + value, value, radius - 1, direction)
               }
             case None =>
               cells

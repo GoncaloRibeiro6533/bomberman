@@ -4,6 +4,7 @@ import cats.effect.kernel.{Async, Ref, Resource}
 import cats.effect.std.Queue
 import cats.syntax.all.*
 import com.evolution.player.PlayerId
+import com.evolution.util.IdGenerator
 import io.circe.parser.decode
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder}
@@ -22,25 +23,26 @@ trait WebsocketService[F[_]] {
       webSocketBuilder2: WebSocketBuilder2[F],
       onMessage: A => F[Unit]
   ): F[Response[F]]
-  def disconnect(playerId: PlayerId, reason: String): F[Unit]
+  def disconnect(playerId: PlayerId, reason: String, connectionId: Option[ConnectionId] = None): F[Unit]
   def send[A: Encoder](playerId: PlayerId, message: A): F[Unit]
 }
 
 class WebsocketServiceImpl[F[_]: Async] private (
-    private val connections: Ref[F, Map[PlayerId, Queue[F, WebSocketFrame]]]
+    private val connections: Ref[F, Map[PlayerId, (ConnectionId, Queue[F, WebSocketFrame])]]
 ) extends WebsocketService[F] {
 
-  override def disconnect(playerId: PlayerId, reason: String): F[Unit] = {
+  override def disconnect(playerId: PlayerId, reason: String, connectionId: Option[ConnectionId] = None): F[Unit] = {
     for {
-      playerConnections <-
+      playerConnection <-
         connections.modify { currentState =>
-          val connectionsToClose = currentState.get(playerId)
-          connectionsToClose match {
-            case Some(conn) => (currentState.removed(playerId), Some(conn))
-            case None       => (currentState, None)
+          val connectionToClose =
+            currentState.get(playerId).filter { case (connId, _) => connectionId.forall(_ == connId) }
+          connectionToClose match {
+            case Some((_, queue)) => (currentState.removed(playerId), Some(queue))
+            case None             => (currentState, None)
           }
         }
-      _ <- playerConnections match {
+      _ <- playerConnection match {
         case Some(queue) =>
           for {
             _ <- WebSocketFrame.Close(1000, reason).traverseVoid(frame => queue.offer(frame))
@@ -54,7 +56,7 @@ class WebsocketServiceImpl[F[_]: Async] private (
   override def send[A: Encoder](playerId: PlayerId, message: A): F[Unit] = for {
     map <- connections.get
     _ <- map.get(playerId) match {
-      case Some(value) =>
+      case Some((_, value)) =>
         value.offer(WebSocketFrame.Text(message.asJson.noSpaces))
       case None => Async[F].unit
     }
@@ -69,8 +71,10 @@ class WebsocketServiceImpl[F[_]: Async] private (
   ): F[Response[F]] =
     for {
       queue <- Queue.bounded[F, WebSocketFrame](10)
+      uuid <- IdGenerator.generateUUID
+      connectionId = ConnectionId(uuid)
       response <- webSocketBuilder2
-        .withOnClose(disconnect(playerId, "connection closed abruptly"))
+        .withOnClose(disconnect(playerId, "connection closed abruptly", connectionId.some))
         .build(
           send = fs2.Stream
             .fromQueueUnterminated(queue = queue)
@@ -93,8 +97,10 @@ class WebsocketServiceImpl[F[_]: Async] private (
             )
           }
         )
-      _ <- disconnect(playerId, "establishing new connection")
-      _ <- connections.modify(currentConnections => (currentConnections.updated(playerId, queue), ()))
+      _    <- disconnect(playerId, "establishing new connection")
+      _ <- connections.modify(currentConnections =>
+        (currentConnections.updated(playerId, (connectionId, queue)), ())
+      )
       _ <- Logger[F].info(s"Player with id: ${playerId.value} connected")
     } yield response
 
@@ -123,13 +129,14 @@ object WebsocketServiceImpl {
 
   def make[F[_]: Async]: Resource[F, WebsocketServiceImpl[F]] =
     for {
-      connections <- Resource.make(Ref[F].of(Map[PlayerId, Queue[F, WebSocketFrame]]().empty)) { stateRef =>
-        for {
-          map <- stateRef.get
-          _ <- map.values.toVector.traverseVoid(queue =>
-            WebSocketFrame.Close(1000, "server shut down").traverseVoid(frame => queue.offer(frame))
-          )
-        } yield ()
+      connections <- Resource.make(Ref[F].of(Map[PlayerId, (ConnectionId, Queue[F, WebSocketFrame])]().empty)) {
+        stateRef =>
+          for {
+            map <- stateRef.get
+            _ <- map.values.toVector.traverseVoid { case (_, queue) =>
+              WebSocketFrame.Close(1000, "server shut down").traverseVoid(frame => queue.offer(frame))
+            }
+          } yield ()
       }
     } yield new WebsocketServiceImpl[F](connections)
 }

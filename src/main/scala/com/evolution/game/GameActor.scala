@@ -50,7 +50,7 @@ class GameActor[F[_]: Async](
             }
           case Command.Tick => Async[F].pure(gameWaiting)
           case Command.Movement(playerId, _) =>
-            websocketService.send(playerId, "Game not running") as game
+            websocketService.send(playerId, "Game not started") as game
           case Command.PlantBomb(playerId) => websocketService.send(playerId, "Game not started") as game
         }
       case gameRunning: GameRunning =>
