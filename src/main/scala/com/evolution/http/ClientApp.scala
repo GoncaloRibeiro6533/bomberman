@@ -17,7 +17,7 @@ import org.http4s.Credentials.Token
 import org.http4s.Method.{DELETE, GET, POST}
 import org.http4s.client.Client
 import org.http4s.client.dsl.io.*
-import org.http4s.client.websocket.{ WSConnectionHighLevel, WSFrame, WSRequest}
+import org.http4s.client.websocket.{WSConnectionHighLevel, WSFrame, WSRequest}
 import org.http4s.ember.client.*
 import org.http4s.headers.{Authorization, `WWW-Authenticate`}
 import org.http4s.implicits.*
@@ -324,7 +324,6 @@ object ClientApp extends IOApp {
       }
     } yield ()
 
-
   private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
     for {
       _ <- IO.println(s"Joining Game ${gameId.show} ")
@@ -340,8 +339,8 @@ object ClientApp extends IOApp {
         for {
           cmdReader <- sendCommand(connection, player.player.id).start
           _ <- connection.receiveStream
-            .collect {
-              case WSFrame.Text(json, _) => decode[Game](json)
+            .collect { case WSFrame.Text(json, _) =>
+              decode[Game](json)
             }
             .evalTap {
               case Left(message) => IO.println(message)
@@ -356,8 +355,8 @@ object ClientApp extends IOApp {
             .compile
             .drain
           closeFrame <- connection.closeFrame.get
-          _ <- IO.println(closeFrame.reason)
-          _ <- cmdReader.cancel
+          _          <- IO.println(closeFrame.reason)
+          _          <- cmdReader.cancel
         } yield ()
       }
     } yield ()

@@ -71,7 +71,7 @@ class WebsocketServiceImpl[F[_]: Async] private (
   ): F[Response[F]] =
     for {
       queue <- Queue.bounded[F, WebSocketFrame](10)
-      uuid <- IdGenerator.generateUUID
+      uuid  <- IdGenerator.generateUUID
       connectionId = ConnectionId(uuid)
       response <- webSocketBuilder2
         .withOnClose(disconnect(playerId, "connection closed abruptly", connectionId.some))
@@ -97,10 +97,8 @@ class WebsocketServiceImpl[F[_]: Async] private (
             )
           }
         )
-      _    <- disconnect(playerId, "establishing new connection")
-      _ <- connections.modify(currentConnections =>
-        (currentConnections.updated(playerId, (connectionId, queue)), ())
-      )
+      _ <- disconnect(playerId, "establishing new connection")
+      _ <- connections.modify(currentConnections => (currentConnections.updated(playerId, (connectionId, queue)), ()))
       _ <- Logger[F].info(s"Player with id: ${playerId.value} connected")
     } yield response
 
