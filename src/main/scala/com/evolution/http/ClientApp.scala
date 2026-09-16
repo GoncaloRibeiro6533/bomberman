@@ -1,7 +1,7 @@
 package com.evolution.http
 
 import cats.Show
-import cats.data.OptionT
+import cats.data.{NonEmptyList, OptionT}
 import cats.effect.*
 import cats.implicits.*
 import com.evolution.game.*
@@ -11,15 +11,15 @@ import com.evolution.player.Player.IdlePlayer
 import com.evolution.util.KeyboardReader
 import io.circe.parser.*
 import io.circe.syntax.*
-import io.circe.{Decoder, Encoder, jawn}
+import io.circe.{Decoder, Encoder}
 import org.http4s.*
 import org.http4s.Credentials.Token
 import org.http4s.Method.{DELETE, GET, POST}
 import org.http4s.client.Client
 import org.http4s.client.dsl.io.*
-import org.http4s.client.websocket.{WSConnectionHighLevel, WSFrame, WSRequest}
+import org.http4s.client.websocket.{ WSConnectionHighLevel, WSFrame, WSRequest}
 import org.http4s.ember.client.*
-import org.http4s.headers.Authorization
+import org.http4s.headers.{Authorization, `WWW-Authenticate`}
 import org.http4s.implicits.*
 import org.http4s.jdkhttpclient.JdkWSClient
 
@@ -67,11 +67,11 @@ object ClientApp extends IOApp {
     }
   } yield num
 
-  private def sendCommand(client: WSConnectionHighLevel[IO], playerId: PlayerId): IO[Unit] =
+  private def sendCommand(connection: WSConnectionHighLevel[IO], playerId: PlayerId): IO[Unit] =
     for {
-      cmd <- KeyboardReader.readCommand[IO](playerId)
-      _   <- client.send(WSFrame.Text(cmd.asJson.noSpaces))
-      _   <- sendCommand(client, playerId)
+      cmd <- KeyboardReader.readCommand[IO]
+      _   <- connection.send(WSFrame.Text(cmd.asJson.noSpaces))
+      _   <- sendCommand(connection, playerId)
     } yield ()
 
   private def printBoard(game: GameRunning, playerId: PlayerId): IO[Unit] = for {
@@ -159,7 +159,7 @@ object ClientApp extends IOApp {
       client: Client[IO],
       request: Request[IO]
   ): IO[Option[O]] = {
-    val res: IO[Either[String, O]] =
+    val res =
       client.run(request).use { response =>
         response.bodyText.compile.string.flatMap { bodyString =>
           if (response.status.isSuccess) {
@@ -167,20 +167,29 @@ object ClientApp extends IOApp {
               case Left(_)      => IO.pure("".asLeft[O])
               case Right(value) => IO.pure(value.asRight[String])
             }
-          } else if (response.status == Status.Unauthorized) {
-            player.set(None).as("Unauthorized".asLeft[O])
           } else {
-            IO.pure(bodyString.asLeft[O])
+            for {
+              _ <- if (bodyString.nonEmpty) IO.println(bodyString.filter { c => c != '"' }) else IO.unit
+              result <-
+                if (
+                  response.status == Status.Unauthorized &&
+                  response.headers
+                    .get[`WWW-Authenticate`]
+                    .contains(
+                      `WWW-Authenticate`(
+                        NonEmptyList.of(Challenge("Bearer", ""))
+                      )
+                    )
+                ) {
+                  player.set(None).as("Unauthorized".asLeft[O])
+                } else {
+                  IO.pure(bodyString.asLeft[O])
+                }
+            } yield result
           }
         }
       }
-    for {
-      content <- res
-      result <- content match {
-        case Left(value)  => IO.println(value.filterNot(_ == '"')).as(None)
-        case Right(value) => IO.pure(Some(value))
-      }
-    } yield result
+    res.map(_.toOption)
   }
 
   private def addHeadersAndBody[I](method: Method, uri: Uri, body: Option[I], headers: Option[Headers])(implicit
@@ -271,7 +280,7 @@ object ClientApp extends IOApp {
           client,
           uri / "game",
           POST,
-          GameRequest(2).some,
+          GameRequest(1).some,
           generateAuthHeader(player).some
         )
       )
@@ -315,12 +324,6 @@ object ClientApp extends IOApp {
       }
     } yield ()
 
-  private val gameDecoder: String => Either[io.circe.Error, Either[String, Game]] =
-    str =>
-      jawn
-        .decode[Game](str)
-        .map(Right(_))
-        .orElse(decode[String](str).map(Left(_)))
 
   private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
     for {
@@ -330,26 +333,30 @@ object ClientApp extends IOApp {
       clientResource: Resource[IO, WSConnectionHighLevel[IO]] =
         Resource
           .eval(IO(HttpClient.newHttpClient()))
-          .flatMap(JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET)))
-      _ <- clientResource.use { client =>
+          .flatMap(
+            JdkWSClient[IO](_).connectHighLevel(WSRequest(uri = joinUri, headers = headers, method = GET))
+          )
+      _ <- clientResource.use { connection =>
         for {
-          cmdReader <- sendCommand(client, player.player.id).start
-          _ <- client.receiveStream
-            .collect { case WSFrame.Text(json, _) => gameDecoder(json) }
+          cmdReader <- sendCommand(connection, player.player.id).start
+          _ <- connection.receiveStream
+            .collect {
+              case WSFrame.Text(json, _) => decode[Game](json)
+            }
             .evalTap {
-              case Left(error)        => IO.println(s"Failed to decode game: $error")
-              case Right(Left(error)) => IO.println(error)
-              case Right(Right(game)) => printGame(game, player.player.id)
+              case Left(message) => IO.println(message)
+              case Right(game)   => printGame(game, player.player.id)
             }
             .takeWhile {
-              case Left(_)                       => true
-              case Right(Left(_))                => true
-              case Right(Right(_: GameWaiting))  => true
-              case Right(Right(_: GameRunning))  => true
-              case Right(Right(_: GameFinished)) => false
+              case Left(_)                => true
+              case Right(_: GameWaiting)  => true
+              case Right(_: GameRunning)  => true
+              case Right(_: GameFinished) => false
             }
             .compile
             .drain
+          closeFrame <- connection.closeFrame.get
+          _ <- IO.println(closeFrame.reason)
           _ <- cmdReader.cancel
         } yield ()
       }
