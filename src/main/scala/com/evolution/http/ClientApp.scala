@@ -324,6 +324,16 @@ object ClientApp extends IOApp {
       }
     } yield ()
 
+  private def decodeMessage(msg: String): Either[String, Game] =
+    decode[Game](msg) match {
+      case Left(error) =>
+        decode[String](msg) match {
+          case Left(_)      => Left(error.getMessage)
+          case Right(value) => Left(value)
+        }
+      case Right(value) => Right(value)
+    }
+
   private def joinGameRequest(player: AuthPlayer, gameId: UUID): IO[Unit] =
     for {
       _ <- IO.println(s"Joining Game ${gameId.show} ")
@@ -340,23 +350,17 @@ object ClientApp extends IOApp {
           cmdReader <- sendCommand(connection, player.player.id).start
           _ <- connection.receiveStream
             .collect { case WSFrame.Text(json, _) =>
-              decode[Game](json)
+              decodeMessage(json)
             }
             .evalTap {
               case Left(message) => IO.println(message)
               case Right(game)   => printGame(game, player.player.id)
             }
-            .takeWhile {
-              case Left(_)                => true
-              case Right(_: GameWaiting)  => true
-              case Right(_: GameRunning)  => true
-              case Right(_: GameFinished) => false
-            }
             .compile
             .drain
+            .guarantee(cmdReader.cancel)
           closeFrame <- connection.closeFrame.get
           _          <- IO.println(closeFrame.reason)
-          _          <- cmdReader.cancel
         } yield ()
       }
     } yield ()
