@@ -6,15 +6,8 @@ import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all.*
 import com.evolution.player.Player.IdlePlayer
 import com.evolution.util.IdGenerator
-import io.circe.generic.JsonCodec
 
 import java.time.Instant
-import java.util.UUID
-
-@JsonCodec
-case class TokenInfo(value: UUID)
-@JsonCodec
-case class Token(token: TokenInfo, playerId: PlayerId, createdAt: Instant)
 
 sealed trait PlayerRepositoryError
 

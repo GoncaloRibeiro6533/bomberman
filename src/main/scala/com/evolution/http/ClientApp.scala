@@ -91,11 +91,11 @@ object ClientApp extends IOApp {
     }
   }
 
-  private implicit val showGameId: Show[GameResponse] = Show.show { gameDto =>
+  private implicit val showGameId: Show[GameResponse] = { gameDto =>
     s"Game id: ${gameDto.id.id}"
   }
 
-  private implicit val showGamesList: Show[GamesResponse] = Show.show { GamesResponse =>
+  private implicit val showGamesList: Show[GamesResponse] = { GamesResponse =>
     if (GamesResponse.games.nonEmpty) GamesResponse.games.map(game => game.show).mkString("\n")
     else "No games available. Please create a new one."
   }

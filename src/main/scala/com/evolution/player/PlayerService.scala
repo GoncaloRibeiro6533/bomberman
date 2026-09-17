@@ -4,12 +4,8 @@ import cats.data.EitherT
 import cats.effect.kernel.Async
 import com.evolution.player.Player.IdlePlayer
 import com.evolution.util.{HashUtils, IdGenerator}
-import io.circe.generic.JsonCodec
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-@JsonCodec
-final case class AuthPlayer(player: IdlePlayer, token: Token)
 
 class PlayerService[F[_]: Async](private val playerRepository: PlayerRepository[F]) {
   implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
