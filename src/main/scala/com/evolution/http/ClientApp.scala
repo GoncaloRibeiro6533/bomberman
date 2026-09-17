@@ -352,7 +352,7 @@ object ClientApp extends IOApp {
             .collect { case WSFrame.Text(json, _) =>
               decodeMessage(json)
             }
-            .evalTap {
+            .evalMap {
               case Left(message) => IO.println(message)
               case Right(game)   => printGame(game, player.player.id)
             }
