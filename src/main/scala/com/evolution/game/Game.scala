@@ -12,6 +12,7 @@ import io.circe.generic.JsonCodec
 import java.time.{Duration, Instant}
 import java.util.UUID
 import scala.annotation.tailrec
+import scala.math.Ordering.Implicits.infixOrderingOps
 
 @JsonCodec
 sealed trait Game {
@@ -112,10 +113,9 @@ object Game {
       val bombsToDetonate            = bombs.filter { bomb => bomb.isExpired(now) }
       val elapsed: Duration          = Duration.between(startedAt, now)
       val newRemainingTime: Duration = duration.minus(elapsed)
-      if (newRemainingTime.isNegative) {
-        finish(activePlayers, deadPlayers, remainingTime = remainingTime)
-      } else if (newRemainingTime.isZero) {
-        finish(activePlayers, deadPlayers, remainingTime = newRemainingTime)
+      if (newRemainingTime.isNegative || newRemainingTime.isZero || activePlayers.isEmpty ||
+        (nPlayers.value >= 2 && nPlayers.value - deadPlayers.size <= 1) ) {
+        finish(activePlayers, deadPlayers, remainingTime = Duration.ZERO.max(newRemainingTime))
       } else {
         if (bombsToDetonate.nonEmpty) {
           val bombsWithAffectedCells: Map[Bomb, Set[Cell]] =

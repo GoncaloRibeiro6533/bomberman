@@ -26,6 +26,8 @@ val catsVersion        = "2.9.0"
 val catsTaglessVersion = "0.14.0"
 val catsEffect3Version = "3.3.0"
 val log4CatsVersion    = "2.5.0"
+val scalaTestVersion = "3.2.7.0"
+
 
 lazy val root = project
   .in(file("."))
@@ -33,34 +35,26 @@ lazy val root = project
     name := "bomberman",
 
     libraryDependencies ++= Seq(
-      // Cats
       "org.typelevel" %% "cats-core"   % catsVersion,
       "org.typelevel" %% "cats-effect" % catsEffect3Version,
-
-      // Http4s
       "org.http4s" %% "http4s-dsl"              % http4sVersion,
       "org.http4s" %% "http4s-ember-server"    % http4sVersion,
       "org.http4s" %% "http4s-ember-client"    % http4sVersion,
       "org.http4s" %% "http4s-circe"           % http4sVersion,
       "org.http4s" %% "http4s-jdk-http-client" % "0.9.0",
-
-      // Circe
       "io.circe" %% "circe-core"    % circeVersion,
       "io.circe" %% "circe-generic" % circeVersion,
       "io.circe" %% "circe-parser"  % circeVersion,
-
-      // Logging
       "org.typelevel" %% "log4cats-slf4j" % log4CatsVersion,
       "ch.qos.logback" % "logback-classic" % "1.5.13",
-
-      // Cats Tagless
       "org.typelevel" %% "cats-tagless-macros" % catsTaglessVersion,
-
-      // Tests
       "org.typelevel" %% "cats-effect-testing-scalatest" % "1.5.0" % Test,
       "org.scalameta"  %% "munit"                       % "0.7.29" % Test,
       "org.typelevel" %% "munit-cats-effect"            % "2.0.0-M3" % Test,
-      "org.mockito"   %% "mockito-scala"                % "1.16.32" % Test
+      "org.mockito"   %% "mockito-scala"                % "1.16.32" % Test,
+      "org.scalatestplus"        %% "scalacheck-1-15"               % scalaTestVersion % Test,
+      "org.scalatestplus"        %% "selenium-3-141"                % scalaTestVersion % Test,
+      "org.typelevel" %% "cats-effect-testkit" % "3.7.1" % Test,
     )
   )
 
