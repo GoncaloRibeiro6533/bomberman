@@ -2,7 +2,7 @@ package com.evolution.cell
 
 import io.circe.{Decoder, Encoder}
 
-class PositiveNumber private (val value: Int) extends AnyVal
+case class PositiveNumber private (value: Int) extends AnyVal
 
 object PositiveNumber {
   val One: PositiveNumber = new PositiveNumber(1)

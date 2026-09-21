@@ -28,7 +28,7 @@ trait WebsocketService[F[_]] {
 }
 
 class WebsocketServiceImpl[F[_]: Async] private (
-    private val connections: Ref[F, Map[PlayerId, (ConnectionId, Queue[F, WebSocketFrame])]]
+    connections: Ref[F, Map[PlayerId, (ConnectionId, Queue[F, WebSocketFrame])]]
 ) extends WebsocketService[F] {
 
   override def disconnect(playerId: PlayerId, reason: String, connectionId: Option[ConnectionId] = None): F[Unit] = {

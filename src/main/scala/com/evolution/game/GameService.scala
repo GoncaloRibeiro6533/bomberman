@@ -10,8 +10,8 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 class GameService[F[_]: Async](
-    private val repository: GameRepository[F],
-    private val websocketService: WebsocketService[F]
+    repository: GameRepository[F],
+    websocketService: WebsocketService[F]
 ) {
 
   implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]

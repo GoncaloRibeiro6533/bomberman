@@ -7,7 +7,7 @@ import com.evolution.util.{HashUtils, IdGenerator}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-class PlayerService[F[_]: Async](private val playerRepository: PlayerRepository[F]) {
+class PlayerService[F[_]: Async](playerRepository: PlayerRepository[F]) {
   implicit def logger: Logger[F] = Slf4jLogger.getLogger[F]
 
   def createPlayer(username: Username, password: PasswordIn): F[Either[PlayerRepositoryError, IdlePlayer]] = {

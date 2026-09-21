@@ -74,10 +74,17 @@ object ClientApp extends IOApp {
       _   <- sendCommand(connection, playerId)
     } yield ()
 
-  private def printBoard(game: GameRunning, playerId: PlayerId): IO[Unit] = for {
+  private def printBoardRunning(game: GameRunning, playerId: PlayerId): IO[Unit] = for {
     _ <- IO.println(f"${game.remainingTime.toMinutesPart}%02d:${game.remainingTime.toSecondsPart}%02d")
     player = game.activePlayers.find(_.id == playerId)
     _ <- game.getMaze.toPrintable(player).traverse_(IO.println)
+  } yield ()
+
+  private def printBoardFinished(game: GameFinished, playerId: PlayerId): IO[Unit] = for {
+    _ <- IO.println(f"${game.remainingTime.toMinutesPart}%02d:${game.remainingTime.toSecondsPart}%02d")
+    player = game.activePlayers.find(_.id == playerId)
+    _ <- game.getMaze.toPrintable(player).traverse_(IO.println)
+    _ <- IO.println(s"Game over: Winner is ${game.winner.username.value}")
   } yield ()
 
   private def printGame(game: Game, playerId: PlayerId): IO[Unit] = {
@@ -85,9 +92,9 @@ object ClientApp extends IOApp {
       case GameWaiting(_, _, _) =>
         IO.println("Waiting for players...")
       case running: GameRunning =>
-        printBoard(running, playerId)
+        printBoardRunning(running, playerId)
       case gameFinished: GameFinished =>
-        IO.println(s"Game over: Winner is ${gameFinished.winner.username.value}")
+        printBoardFinished(gameFinished, playerId)
     }
   }
 

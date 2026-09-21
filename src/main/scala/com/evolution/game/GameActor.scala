@@ -7,7 +7,6 @@ import cats.effect.std.Queue
 import cats.implicits.*
 import com.evolution.game.Command.*
 import com.evolution.game.Game.*
-import com.evolution.player.PlayerId
 import com.evolution.websocket.WebsocketService
 
 import java.time.Instant
@@ -73,8 +72,7 @@ class GameActor[F[_]: Async](
         }
       case gameFinished: GameFinished =>
         broadcastState(game)
-        val allPlayers: Set[PlayerId] = gameFinished.survivors.map(_.id) ++ gameFinished.killed.map(_.id)
-        allPlayers.toVector.traverseVoid(websocketService.disconnect(_, "Game Finished")) *>
+        gameFinished.allPlayers.toVector.traverseVoid(websocketService.disconnect(_, "Game Finished")) *>
           onComplete(gameFinished) as gameFinished
     }
   }

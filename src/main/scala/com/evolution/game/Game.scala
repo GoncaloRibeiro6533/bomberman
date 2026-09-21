@@ -112,13 +112,10 @@ object Game {
       val bombsToDetonate            = bombs.filter { bomb => bomb.isExpired(now) }
       val elapsed: Duration          = Duration.between(startedAt, now)
       val newRemainingTime: Duration = duration.minus(elapsed)
-      val playersAlive               = nPlayers.value - deadPlayers.size
-      if (
-        activePlayers.isEmpty ||
-        (nPlayers.value == 1 && playersAlive == 0) ||
-        (nPlayers.value >= 2 && playersAlive <= 1) || newRemainingTime.isNegative || newRemainingTime.isZero
-      ) { // print at least once the empty board
-        finish(activePlayers, deadPlayers)
+      if (newRemainingTime.isNegative) {
+        finish(activePlayers, deadPlayers, remainingTime = remainingTime)
+      } else if (newRemainingTime.isZero) {
+        finish(activePlayers, deadPlayers, remainingTime = newRemainingTime)
       } else {
         if (bombsToDetonate.nonEmpty) {
           val bombsWithAffectedCells: Map[Bomb, Set[Cell]] =
@@ -130,13 +127,25 @@ object Game {
           val (newDeadPlayers, newActivePlayers) =
             getPlayersWithScoreUpdated(activePlayers, deadPlayers, killedPlayers, bombsToDetonate)
           val remainingBombs = bombs.diff(bombsToDetonate)
-          copy(
-            activePlayers = newActivePlayers,
-            deadPlayers = newDeadPlayers,
-            blocks = remainingBlocks,
-            bombs = remainingBombs,
-            remainingTime = newRemainingTime
-          )
+          if (
+            newActivePlayers.isEmpty ||
+            (nPlayers.value >= 2 && nPlayers.value - newDeadPlayers.size <= 1)
+          ) {
+            finish(
+              activePlayers = newActivePlayers,
+              deadPlayers = newDeadPlayers,
+              blocks = remainingBlocks,
+              bombs = remainingBombs,
+              remainingTime = newRemainingTime
+            )
+          } else
+            copy(
+              activePlayers = newActivePlayers,
+              deadPlayers = newDeadPlayers,
+              blocks = remainingBlocks,
+              bombs = remainingBombs,
+              remainingTime = newRemainingTime
+            )
         } else copy(remainingTime = newRemainingTime)
       }
     }
@@ -271,17 +280,32 @@ object Game {
       Set(Up, Down, Left, Right).flatMap(getCells(Set(center), center, radius, _))
     }
 
-    private def finish(activePlayers: Set[ActivePlayer], deadPlayers: Set[DeadPlayer]): GameFinished = {
+    private def finish(
+        activePlayers: Set[ActivePlayer],
+        deadPlayers: Set[DeadPlayer],
+        bombs: Set[Bomb] = this.bombs,
+        walls: Set[Cell] = this.walls,
+        blocks: Set[Cell] = this.blocks,
+        remainingTime: Duration
+    ): GameFinished = {
       val winner = activePlayers.toList.sortBy(_.score.value).headOption match {
         case Some(value) => value
         case None        => deadPlayers.maxBy(_.score.value)
       }
       GameFinished(
-        id = id,
-        nPlayers = nPlayers,
-        winner = winner,
-        survivors = activePlayers,
-        killed = deadPlayers
+        id,
+        nPlayers,
+        winner,
+        activePlayers,
+        deadPlayers,
+        bombs,
+        walls,
+        blocks,
+        startedAt,
+        remainingTime,
+        duration,
+        width,
+        height
       )
     }
   }
@@ -291,9 +315,29 @@ object Game {
       id: GameId,
       nPlayers: PositiveNumber,
       winner: Player,
-      survivors: Set[ActivePlayer],
-      killed: Set[DeadPlayer]
+      activePlayers: Set[ActivePlayer],
+      deadPlayers: Set[DeadPlayer],
+      bombs: Set[Bomb],
+      walls: Set[Cell],
+      blocks: Set[Cell],
+      startedAt: Instant,
+      remainingTime: Duration,
+      duration: Duration,
+      width: Int,
+      height: Int
   ) extends Game {
-    override def allPlayers: Set[PlayerId] = survivors.map(_.id) ++ killed.map(_.id)
+    private def getPositions: Set[Position] = {
+      val playerPositions = activePlayers.map(_.cell.toPosition(PlayerPosition))
+      val wallsPositions  = walls.map(_.toPosition(Wall))
+      val bombsPositions  = bombs.map(_.cell.toPosition(BombPlacement))
+      val blocksPositions = blocks.map(_.toPosition(DestructibleBlock))
+      Set.concat(playerPositions, wallsPositions, bombsPositions, blocksPositions)
+    }
+
+    override def allPlayers: Set[PlayerId] = activePlayers.map(_.id) ++ deadPlayers.map(_.id)
+
+    def getMaze: Maze = {
+      Maze(width, height, getPositions)
+    }
   }
 }
